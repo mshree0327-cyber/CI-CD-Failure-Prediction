@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leakage-Aware CI/CD Failure Prediction</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background:#f4f6f9; }
+    .hero { background:#14213d; color:#fff; border-radius:16px; }
+    .card { border:0; border-radius:14px; }
+    .metric { font-size:1.8rem; font-weight:700; }
+    .factor-bar { height:9px; background:#e9ecef; border-radius:20px; overflow:hidden; }
+    .factor-bar > span { display:block; height:100%; background:#0d6efd; }
+    .required-note { font-size:.85rem; color:#6c757d; }
+  </style>
+</head>
+<body>
+<div class="container py-4 py-lg-5">
+  <header class="hero p-4 p-lg-5 mb-4">
+    <h1 class="h2 mb-2">CI/CD Failure Prediction</h1>
+    <p class="mb-0 text-white-50">Leakage-aware and explainable pre-build prediction using audited repository features.</p>
+  </header>
+
+  <div class="alert alert-info">
+    Enter information available <strong>before the current build starts</strong>. Do not enter build duration, test results, current build status, or other execution outcomes.
+  </div>
+
+  <div id="evaluationResults" class="d-none">
+  <section class="card shadow-sm mb-4" aria-labelledby="evaluationTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <div>
+          <h2 id="evaluationTitle" class="h5 mb-1">Random vs Chronological Evaluation</h2>
+          <p class="text-muted small mb-0">Random Forest performance using the same 19 pre-build features.</p>
+        </div>
+        <span class="badge text-bg-secondary">Metrics loaded from held-out evaluation</span>
+      </div>
+      <div style="height:360px; position:relative;">
+        <canvas id="evaluationChart" role="img" aria-label="Grouped bar chart comparing random and chronological model evaluation metrics"></canvas>
+      </div>
+      <p class="text-muted small mt-3 mb-0">
+        Random split: 3,763 training / 941 testing builds.
+        Chronological split: 3,763 earlier training / 941 later testing builds.
+        Chronological results apply only to builds matched with the timestamp archive.
+      </p>
+    </div>
+  </section>
+
+  <!-- Confusion Matrix Comparison -->
+  <section class="card shadow-sm mb-4" aria-labelledby="confusionTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+          <h2 id="confusionTitle" class="h5 mb-1">Confusion Matrix Comparison</h2>
+          <p class="text-muted small mb-0">
+            Actual versus predicted CI/CD build outcomes using the same 19 pre-build features.
+          </p>
+        </div>
+        <span class="badge text-bg-secondary">941 test builds each</span>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-md-6">
+          <h3 class="h6 text-primary mb-3">Random Stratified Split</h3>
+          <div class="table-responsive">
+            <table class="table table-bordered text-center align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">Actual / Predicted</th>
+                  <th scope="col">Success</th>
+                  <th scope="col">Failure</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Success</th>
+                  <td id="randomCmSS" class="table-success fw-bold">537</td>
+                  <td id="randomCmSF">79</td>
+                </tr>
+                <tr>
+                  <th scope="row">Failure</th>
+                  <td id="randomCmFS">143</td>
+                  <td id="randomCmFF" class="table-warning fw-bold">182</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small text-muted mb-0">Accuracy: <strong id="randomAccuracy">—</strong></p>
+        </div>
+
+        <div class="col-md-6">
+          <h3 class="h6 text-warning mb-3">Chronological Split</h3>
+          <div class="table-responsive">
+            <table class="table table-bordered text-center align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">Actual / Predicted</th>
+                  <th scope="col">Success</th>
+                  <th scope="col">Failure</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Success</th>
+                  <td id="chronoCmSS" class="table-success fw-bold">551</td>
+                  <td id="chronoCmSF">98</td>
+                </tr>
+                <tr>
+                  <th scope="row">Failure</th>
+                  <td id="chronoCmFS">178</td>
+                  <td id="chronoCmFF" class="table-warning fw-bold">114</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small text-muted mb-0">Accuracy: <strong id="chronoAccuracy">—</strong></p>
+        </div>
+      </div>
+
+      <div class="alert alert-light border small mt-3 mb-0">
+        <strong>Interpretation:</strong> Rows represent actual outcomes and columns represent predicted outcomes.
+        Diagonal cells show correct predictions; off-diagonal cells show incorrect predictions.
+      </div>
+    </div>
+  </section>
+  <!-- End Confusion Matrix Comparison -->
+
+  <section class="card shadow-sm mb-4" aria-labelledby="projectGroupedTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <div>
+          <h2 id="projectGroupedTitle" class="h5 mb-1">Project-Grouped Evaluation (Unseen Projects)</h2>
+          <p class="text-muted small mb-0">Entire repositories are kept separate across training, validation and testing. The test projects are unseen during model training.</p>
+        </div>
+        <span class="badge text-bg-secondary" id="projectGroupedBadge">Loading project-grouped results...</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm align-middle text-center">
+          <thead class="table-light"><tr><th>Partition</th><th>Build records</th><th>Projects</th><th>Success</th><th>Failure</th></tr></thead>
+          <tbody>
+            <tr><th>Training</th><td id="pgTrainRecords">—</td><td id="pgTrainProjects">—</td><td id="pgTrainSuccess">—</td><td id="pgTrainFailure">—</td></tr>
+            <tr><th>Validation</th><td id="pgValRecords">—</td><td id="pgValProjects">—</td><td id="pgValSuccess">—</td><td id="pgValFailure">—</td></tr>
+            <tr><th>Held-out test</th><td id="pgTestRecords">—</td><td id="pgTestProjects">—</td><td id="pgTestSuccess">—</td><td id="pgTestFailure">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 class="h6 mt-3">Held-out unseen-project test performance</h3>
+      <div class="row g-2 small">
+        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Accuracy</div><strong id="pgAccuracy">—</strong></div></div>
+        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure precision</div><strong id="pgPrecision">—</strong></div></div>
+        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure recall</div><strong id="pgRecall">—</strong></div></div>
+        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure F1</div><strong id="pgF1">—</strong></div></div>
+        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure ROC-AUC</div><strong id="pgAuc">—</strong></div></div>
+      </div>
+      <h3 class="h6 mt-3">Project-grouped confusion matrix</h3>
+      <div class="table-responsive" style="max-width:520px;">
+        <table class="table table-bordered text-center align-middle">
+          <thead class="table-light"><tr><th>Actual / Predicted</th><th>Success</th><th>Failure</th></tr></thead>
+          <tbody>
+            <tr><th>Success</th><td id="pgCmSS" class="table-success fw-bold">—</td><td id="pgCmSF">—</td></tr>
+            <tr><th>Failure</th><td id="pgCmFS">—</td><td id="pgCmFF" class="table-warning fw-bold">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted small mb-0">This is a separate experiment from random and chronological evaluation. Project names are used only for splitting, never as model input features.</p>
+    </div>
+  </section>
+
+  <section class="card shadow-sm mb-4" aria-labelledby="baselineTitle">
+    <div class="card-body p-4">
+      <h2 id="baselineTitle" class="h5 mb-1">Baseline Model Comparison</h2>
+      <p class="text-muted small">Simple baselines evaluated on the same held-out partitions. The previous-build baseline is available only for timestamp-matched chronological testing.</p>
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm align-middle text-center">
+          <thead class="table-light">
+            <tr><th>Experiment / baseline</th><th>Records scored</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th></tr>
+          </thead>
+          <tbody>
+            <tr><th>Random Forest – random</th><td id="rfRandomN">—</td><td id="rfRandomAcc">—</td><td id="rfRandomPrec">—</td><td id="rfRandomRec">—</td><td id="rfRandomF1">—</td></tr>
+            <tr><th>Majority – random</th><td id="baseRandomN">—</td><td id="baseRandomAcc">—</td><td id="baseRandomPrec">—</td><td id="baseRandomRec">—</td><td id="baseRandomF1">—</td></tr>
+            <tr><th>Random Forest – chronological</th><td id="rfChronoN">—</td><td id="rfChronoAcc">—</td><td id="rfChronoPrec">—</td><td id="rfChronoRec">—</td><td id="rfChronoF1">—</td></tr>
+            <tr><th>Majority – chronological</th><td id="baseChronoN">—</td><td id="baseChronoAcc">—</td><td id="baseChronoPrec">—</td><td id="baseChronoRec">—</td><td id="baseChronoF1">—</td></tr>
+            <tr><th>Previous build outcome – chronological</th><td id="basePrevN">—</td><td id="basePrevAcc">—</td><td id="basePrevPrec">—</td><td id="basePrevRec">—</td><td id="basePrevF1">—</td></tr>
+            <tr><th>Random Forest – project-grouped</th><td id="rfGroupN">—</td><td id="rfGroupAcc">—</td><td id="rfGroupPrec">—</td><td id="rfGroupRec">—</td><td id="rfGroupF1">—</td></tr>
+            <tr><th>Majority – project-grouped</th><td id="baseGroupN">—</td><td id="baseGroupAcc">—</td><td id="baseGroupPrec">—</td><td id="baseGroupRec">—</td><td id="baseGroupF1">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted small mb-0">Previous-build baseline predicts the current build from the immediately preceding build outcome in the same project. Six of 706 chronological test records were excluded because no strictly earlier, unambiguous prior build was available.</p>
+    </div>
+  </section>
+
+
+</div>
+
+
+
+  <section class="card shadow-sm mb-4" aria-labelledby="projectLevelTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div><h2 id="projectLevelTitle" class="h5 mb-1">Project-Level Performance Analysis</h2>
+        <p class="text-muted small mb-0">Random Forest metrics grouped by repository on the random held-out test partition. Project names are used only for reporting, not as model inputs.</p></div>
+        <span class="badge text-bg-secondary" id="projectLevelBadge">Loading project metrics...</span>
+      </div>
+      <div id="projectLevelError" class="alert alert-warning d-none mt-3"></div>
+      <div class="row g-2 mt-2">
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test builds</div><strong id="plTestRecords">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Projects represented</div><strong id="plProjectCount">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Small samples (&lt;10)</div><strong id="plSmallCount">—</strong></div></div>
+      </div>
+      <div class="table-responsive mt-3"><table class="table table-bordered table-sm align-middle">
+        <thead class="table-light"><tr><th>Project</th><th>Builds</th><th>Success</th><th>Failure</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th><th>Sample note</th></tr></thead>
+        <tbody id="projectLevelTable"><tr><td colspan="9" class="text-center text-muted">Waiting for project-level results...</td></tr></tbody>
+      </table></div>
+      <p class="text-muted small mb-0">Metrics for projects with fewer than 10 test builds are unstable. This subgroup analysis is not the same as project-grouped unseen-project evaluation.</p>
+    </div>
+  </section>
+
+
+
+  <section class="card shadow-sm mb-4" aria-labelledby="rocPrTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+          <h2 id="rocPrTitle" class="h5 mb-1">ROC and Precision–Recall Curve Analysis</h2>
+          <p class="text-muted small mb-0">Threshold-independent evaluation on the random stratified 70:15:15 held-out test partition. Failure is the positive class.</p>
+        </div>
+        <span class="badge text-bg-secondary" id="rocPrBadge">Loading curve metrics...</span>
+      </div>
+      <div id="rocPrError" class="alert alert-warning d-none mt-3"></div>
+      <div class="row g-2 mt-2">
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">ROC-AUC</div><strong id="rocAucMetric">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Average Precision</div><strong id="averagePrecisionMetric">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Failure prevalence</div><strong id="failurePrevalenceMetric">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Held-out test builds</div><strong id="rocPrTestRecords">—</strong></div></div>
+      </div>
+      <h3 class="h6 mt-4">Receiver Operating Characteristic (ROC) curve</h3>
+      <p class="text-muted small">Shows the trade-off between failure recall (true positive rate) and false positive rate across probability thresholds.</p>
+      <img id="rocCurveImage" class="img-fluid border rounded bg-white" alt="ROC curve for failure prediction" style="width:100%; max-height:520px; object-fit:contain;">
+      <h3 class="h6 mt-4">Precision–Recall curve</h3>
+      <p class="text-muted small">Shows failure precision versus failure recall across thresholds. The dashed reference line represents failure prevalence in the held-out test set.</p>
+      <img id="prCurveImage" class="img-fluid border rounded bg-white" alt="Precision recall curve for failure prediction" style="width:100%; max-height:520px; object-fit:contain;">
+      <p class="text-muted small mt-3 mb-0">ROC-AUC measures ranking discrimination. Average Precision summarizes the precision–recall curve. Neither selects an operating threshold by itself.</p>
+    </div>
+  </section>
+
+
+
+  <section class="card shadow-sm mb-4" aria-labelledby="decisionThresholdTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+          <h2 id="decisionThresholdTitle" class="h5 mb-1">Decision Threshold Analysis</h2>
+          <p class="text-muted small mb-0">Threshold selected on validation data by maximum Failure F1; the held-out test set is used only for final evaluation.</p>
+        </div>
+        <span class="badge text-bg-secondary" id="thresholdBadge">Loading threshold analysis...</span>
+      </div>
+      <div id="thresholdError" class="alert alert-warning d-none mt-3"></div>
+      <div class="row g-2 mt-2">
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Selected threshold</div><strong id="selectedThreshold">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Validation Failure F1</div><strong id="validationThresholdF1">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test Failure F1 (selected)</div><strong id="testThresholdF1">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test Failure recall (selected)</div><strong id="testThresholdRecall">—</strong></div></div>
+      </div>
+      <h3 class="h6 mt-4">Validation threshold comparison</h3>
+      <p class="text-muted small">Candidate thresholds are compared using validation records only. The dashed line marks the selected threshold.</p>
+      <img id="decisionThresholdPlot" class="img-fluid border rounded bg-white" alt="Validation decision threshold metrics plot" style="width:100%;max-height:520px;object-fit:contain;">
+      <h3 class="h6 mt-4">Held-out test comparison</h3>
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm align-middle">
+          <thead class="table-light"><tr><th>Threshold</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th><th>False positives</th><th>False negatives</th></tr></thead>
+          <tbody id="thresholdTestTable"><tr><td colspan="7" class="text-center text-muted">Waiting for threshold results...</td></tr></tbody>
+        </table>
+      </div>
+      <p class="text-muted small mb-0">Threshold selection uses validation Failure F1, not test performance. A lower threshold may detect more failures but can increase false alarms. The best operational threshold depends on the relative cost of missed failures and false alarms.</p>
+    </div>
+  </section>
+
+  <section class="card shadow-sm mb-4" aria-labelledby="bootstrapCiTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+          <h2 id="bootstrapCiTitle" class="h5 mb-1">Bootstrap Confidence Interval Analysis</h2>
+          <p class="text-muted small mb-0">95% percentile confidence intervals estimated by resampling paired records from the random held-out test partition.</p>
+        </div>
+        <span class="badge text-bg-secondary" id="bootstrapCiBadge">Loading confidence intervals...</span>
+      </div>
+      <div id="bootstrapCiError" class="alert alert-warning d-none mt-3"></div>
+      <div class="table-responsive mt-3">
+        <table class="table table-bordered table-sm align-middle">
+          <thead class="table-light">
+            <tr><th>Metric</th><th>Point estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>Bootstrap SD</th></tr>
+          </thead>
+          <tbody id="bootstrapCiTable">
+            <tr><td colspan="5" class="text-center text-muted">Waiting for bootstrap results...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted" id="bootstrapCiMethod"></div>
+      <p class="text-muted small mt-2 mb-0">Intervals quantify sampling uncertainty on this held-out test set. They do not include uncertainty from retraining, model selection or dataset shift.</p>
+    </div>
+  </section>
+
+  <section class="card shadow-sm mb-4" aria-labelledby="errorAnalysisTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div><h2 id="errorAnalysisTitle" class="h5 mb-1">Held-out Test Error Analysis</h2>
+        <p class="text-muted small mb-0">Actual errors made by the Random Forest on the random 70:15:15 held-out test partition.</p></div>
+        <span class="badge text-bg-secondary" id="errorAnalysisBadge">Loading error results...</span>
+      </div>
+      <div id="errorAnalysisError" class="alert alert-warning d-none mt-3"></div>
+      <div class="row g-2 mt-2">
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">False positives</div><strong id="eaFalsePositive">—</strong><div class="small text-muted">Success predicted Failure</div></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">False negatives</div><strong id="eaFalseNegative">—</strong><div class="small text-muted">Failure predicted Success</div></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Correct failures</div><strong id="eaCorrectFailure">—</strong></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Correct successes</div><strong id="eaCorrectSuccess">—</strong></div></div>
+      </div>
+      <h3 class="h6 mt-4">Misclassified test-build examples</h3>
+      <p class="text-muted small">Examples are real held-out test records. Build and project identifiers are shown for audit only; they are not model inputs.</p>
+      <div class="table-responsive"><table class="table table-bordered table-sm align-middle">
+        <thead class="table-light"><tr><th>Error type</th><th>Actual</th><th>Predicted</th><th>Failure probability</th><th>Project</th><th>Build ID</th></tr></thead>
+        <tbody id="errorAnalysisTable"><tr><td colspan="6" class="text-center text-muted">Waiting for error analysis...</td></tr></tbody>
+      </table></div>
+      <p class="text-muted small mb-0">False positives and false negatives have different operational costs. Feature averages by error group are descriptive, not causal.</p>
+    </div>
+  </section>
+
+  <section class="card shadow-sm mb-4" aria-labelledby="globalShapTitle">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+          <h2 id="globalShapTitle" class="h5 mb-1">Global SHAP Analysis</h2>
+          <p class="text-muted small mb-0">Overall feature contributions to the Failure prediction across a sample of held-out test builds.</p>
+        </div>
+        <span class="badge text-bg-secondary" id="globalShapBadge">Loading SHAP results...</span>
+      </div>
+      <div id="globalShapError" class="alert alert-warning d-none mt-3 mb-0"></div>
+      <div class="mt-3" style="height:420px; position:relative;">
+        <canvas id="globalShapChart" aria-label="Global SHAP feature importance chart"></canvas>
+      </div>
+      <p class="text-muted small mt-2">Mean absolute SHAP measures average contribution magnitude, not causation. Direction percentages count builds with positive or negative SHAP contributions; net direction summarizes the average signed contribution.</p>
+      <h3 class="h6 mt-4">SHAP summary plot</h3>
+      <p class="text-muted small">Each point represents a build-feature contribution. Positive SHAP values move the output toward Failure; negative values move it away. The table reports how often each feature contributes in each direction across the explained builds.</p>
+      <img id="globalShapSummaryImage" class="img-fluid border rounded bg-white" alt="Global SHAP summary plot" style="width:100%; display:none;">
+      <h3 class="h6 mt-4">Global feature importance and contribution direction</h3>
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm align-middle">
+          <thead class="table-light"><tr><th>Rank</th><th>Original feature</th><th>Mean |SHAP|</th><th>Towards Failure</th><th>Away from Failure</th><th>Net direction</th></tr></thead>
+          <tbody id="globalShapTable"><tr><td colspan="6" class="text-center text-muted">Waiting for global SHAP results...</td></tr></tbody>
+        </table>
+      </div>
+      <p class="text-muted small mb-0">SHAP was calculated using the existing Random Forest and a deterministic sample from its held-out random test partition. The model was not retrained for this analysis.</p>
+    </div>
+  </section>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Build input features</h2>
+        <span class="badge text-bg-primary">19 pre-build features</span>
+      </div>
+      <form id="predictionForm">
+        <div class="row g-3">
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="git_diff_src_churn">Source code churn</label><input class="form-control" type="number" min="0" step="any" id="git_diff_src_churn" value="120" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_added">Files added</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_files_added" value="3" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_deleted">Files deleted</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_files_deleted" value="2" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_modified">Files modified</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_files_modified" value="5" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_src_files">Source files changed</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_src_files" value="8" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_doc_files">Documentation files changed</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_doc_files" value="1" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_other_files">Other files changed</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_other_files" value="1" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_sloc">Source lines of code (SLOC)</label><input class="form-control" type="number" min="0" step="any" id="gh_sloc" value="500" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_num_commits_on_files_touched">Commits on files touched</label><input class="form-control" type="number" min="0" step="any" id="gh_num_commits_on_files_touched" value="4" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="code_churn_rate">Code churn rate</label><input class="form-control" type="number" min="0" step="any" id="code_churn_rate" value="0.25" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="files_changed_total">Total files changed</label><input class="form-control" type="number" min="0" step="any" id="files_changed_total" value="10" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="git_prev_commit_resolution_status">Previous commit resolution status</label>
+            <select class="form-select" id="git_prev_commit_resolution_status" required>
+              <option value="build_found" selected>Build found</option>
+              <option value="merge_found">Merge found</option>
+              <option value="no_previous_build">No previous build</option>
+            </select>
+          </div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_tests_added">Test files/lines added</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_tests_added" value="2" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_tests_deleted">Test files/lines deleted</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_tests_deleted" value="0" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_test_lines_per_kloc">Test lines per KLOC</label><input class="form-control" type="number" min="0" step="any" id="gh_test_lines_per_kloc" value="15" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_test_cases_per_kloc">Test cases per KLOC</label><input class="form-control" type="number" min="0" step="any" id="gh_test_cases_per_kloc" value="10" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_asserts_cases_per_kloc">Assertions per KLOC</label><input class="form-control" type="number" min="0" step="any" id="gh_asserts_cases_per_kloc" value="8" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_team_size">Team size</label><input class="form-control" type="number" min="0" step="any" id="gh_team_size" value="5" required></div>
+          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_by_core_team_member">Core team member indicator/value</label><input class="form-control" type="number" min="0" step="any" id="gh_by_core_team_member" value="1" required></div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button id="submitBtn" class="btn btn-primary px-4" type="submit">Predict build</button>
+          <button class="btn btn-outline-secondary" type="reset">Reset</button>
+        </div>
+        <p class="required-note mt-3 mb-0">All fields are sent to the backend using the exact 19-feature model schema.</p>
+      </form>
+    </div>
+  </div>
+
+  <div id="errorBox" class="alert alert-danger d-none" role="alert"></div>
+  <section id="result" class="d-none">
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3">Prediction result</h2>
+        <div id="predictionBadge" class="h3 mb-4"></div>
+        <div class="row g-4">
+          <div class="col-md-6">
+            <div class="d-flex justify-content-between"><span>Failure probability</span><strong id="failureProbability"></strong></div>
+            <div class="progress mt-2" style="height:12px"><div id="failureBar" class="progress-bar bg-danger" role="progressbar"></div></div>
+          </div>
+          <div class="col-md-6">
+            <div class="d-flex justify-content-between"><span>Success probability</span><strong id="successProbability"></strong></div>
+            <div class="progress mt-2" style="height:12px"><div id="successBar" class="progress-bar bg-success" role="progressbar"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-1">Individual Build Prediction Analysis</h2>
+        <p class="text-muted small mb-3">Probabilities for the build entered above. This chart updates after each successful prediction.</p>
+        <div style="height:280px; position:relative;">
+          <canvas id="individualPredictionChart" role="img" aria-label="Bar chart showing this build's predicted success and failure probabilities"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3">Top SHAP factors</h2>
+        <p class="text-muted small">Positive SHAP values support the predicted class; negative values oppose it, according to the backend explanation.</p>
+        <div id="topFactors"></div>
+      </div>
+    </div>
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3">Recommendations</h2>
+        <ul id="recommendations" class="mb-0"></ul>
+      </div>
+    </div>
+  </section>
+  <footer class="text-center text-muted small py-3">Leakage-aware prediction uses pre-build repository and code-change information only.</footer>
+</div>
+
+<script>
+const evaluationCanvas = document.getElementById("evaluationChart");
+let evaluationChartInstance;
+let individualPredictionChartInstance = null;
+evaluationChartInstance = new Chart(evaluationCanvas, {
+  type: "bar",
+  data: {
+    labels: ["Accuracy", "Failure precision", "Failure recall", "Failure F1-score", "Failure ROC-AUC"],
+    datasets: [
+      {
+        label: "Random split",
+        data: [76.41, 69.73, 56.00, 62.12, 79.57],
+        backgroundColor: "rgba(13, 110, 253, 0.78)",
+        borderColor: "#0d6efd",
+        borderWidth: 1
+      },
+      {
+        label: "Chronological split",
+        data: [70.67, 53.77, 39.04, 45.24, 68.36],
+        backgroundColor: "rgba(253, 126, 20, 0.78)",
+        borderColor: "#fd7e14",
+        borderWidth: 1
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top" },
+      tooltip: {
+        callbacks: {
+          label: (context) => context.dataset.label + ": " + context.parsed.y.toFixed(2) + "%"
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        max: 100,
+        title: { display: true, text: "Score (%)" },
+        ticks: { callback: (value) => value + "%" }
+      }
+    }
+  }
+});
+
+async function loadEvaluationMetrics() {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/evaluation");
+    if (!response.ok) throw new Error("Run backend/evaluate_70_15_15.py first.");
+    const data = await response.json();
+    const random = data.random_experiment.test_metrics;
+    const chrono = data.chronological_experiment.test_metrics;
+    const pct = v => v == null ? 0 : Number(v) * 100;
+    evaluationChartInstance.data.datasets[0].data = [pct(random.accuracy), pct(random.failure_precision), pct(random.failure_recall), pct(random.failure_f1), pct(random.failure_roc_auc)];
+    evaluationChartInstance.data.datasets[1].data = [pct(chrono.accuracy), pct(chrono.failure_precision), pct(chrono.failure_recall), pct(chrono.failure_f1), pct(chrono.failure_roc_auc)];
+    evaluationChartInstance.update();
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    const r = random.confusion_matrix_labels_success_then_failure;
+    const c = chrono.confusion_matrix_labels_success_then_failure;
+    [["randomCmSS",r[0][0]],["randomCmSF",r[0][1]],["randomCmFS",r[1][0]],["randomCmFF",r[1][1]],["chronoCmSS",c[0][0]],["chronoCmSF",c[0][1]],["chronoCmFS",c[1][0]],["chronoCmFF",c[1][1]]].forEach(([id,v]) => set(id,v));
+    set("randomAccuracy",pct(random.accuracy).toFixed(2)+"%");
+    set("chronoAccuracy",pct(chrono.accuracy).toFixed(2)+"%");
+    const badges = document.querySelectorAll('#evaluationResults .badge');
+    if (badges[0]) badges[0].textContent = "Random test: " + random.records + " | Chronological test: " + chrono.records;
+    if (badges[1]) badges[1].textContent = "Held-out test records";
+
+    const pgResponse = await fetch("http://127.0.0.1:8000/api/project-grouped-evaluation");
+    if (!pgResponse.ok) throw new Error("Run backend/evaluate_project_grouped.py to create project-grouped results.");
+    const pg = await pgResponse.json();
+    const pctText = v => v == null ? "N/A" : (Number(v) * 100).toFixed(2) + "%";
+    const put = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    const fillPart = (prefix, part) => {
+      put(prefix + "Records", part.records);
+      put(prefix + "Projects", part.projects);
+      put(prefix + "Success", part.class_distribution.success);
+      put(prefix + "Failure", part.class_distribution.failure);
+    };
+    fillPart("pgTrain", pg.train);
+    fillPart("pgVal", pg.validation);
+    fillPart("pgTest", pg.test);
+    const m = pg.test_metrics;
+    put("pgAccuracy", pctText(m.accuracy));
+    put("pgPrecision", pctText(m.failure_precision));
+    put("pgRecall", pctText(m.failure_recall));
+    put("pgF1", pctText(m.failure_f1));
+    put("pgAuc", pctText(m.failure_roc_auc));
+    const cm = m.confusion_matrix_labels_success_then_failure;
+    put("pgCmSS", cm[0][0]); put("pgCmSF", cm[0][1]);
+    put("pgCmFS", cm[1][0]); put("pgCmFF", cm[1][1]);
+    put("projectGroupedBadge", "116 projects · " + pg.test.projects + " unseen test projects");
+    const showRF = (prefix, item) => {
+      const fmt = v => v == null ? "N/A" : (Number(v)*100).toFixed(2)+"%";
+      put(prefix+"N", item.records);
+      put(prefix+"Acc", fmt(item.accuracy));
+      put(prefix+"Prec", fmt(item.failure_precision));
+      put(prefix+"Rec", fmt(item.failure_recall));
+      put(prefix+"F1", fmt(item.failure_f1));
+    };
+    showRF("rfRandom", random);
+    showRF("rfChrono", chrono);
+    showRF("rfGroup", pg.test_metrics);
+
+    const baseResponse = await fetch("http://127.0.0.1:8000/api/baseline-comparison");
+    if (!baseResponse.ok) throw new Error("Run backend/evaluate_baselines.py to create baseline results.");
+    const base = await baseResponse.json();
+    const showBaseline = (prefix, item) => {
+      const fmt = v => v == null ? "N/A" : (Number(v)*100).toFixed(2)+"%";
+      put(prefix+"N", item.records_scored);
+      put(prefix+"Acc", fmt(item.accuracy));
+      put(prefix+"Prec", fmt(item.failure_precision));
+      put(prefix+"Rec", fmt(item.failure_recall));
+      put(prefix+"F1", fmt(item.failure_f1));
+    };
+    showBaseline("baseRandom", base.majority_class_baseline.random);
+    showBaseline("baseChrono", base.majority_class_baseline.chronological);
+    showBaseline("baseGroup", base.majority_class_baseline.project_grouped);
+    showBaseline("basePrev", base.previous_build_failure_baseline.chronological);
+  } catch (error) { console.error("Evaluation metrics could not load:", error); }
+}
+loadEvaluationMetrics();
+
+
+async function loadGlobalShap() {
+  const errorBox = document.getElementById("globalShapError");
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/global-shap");
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || "Run backend/global_shap_analysis.py first.");
+    }
+    const data = await response.json();
+    const features = data.features || [];
+    const chartFeatures = features.slice(0, 19).slice().reverse();
+    new Chart(document.getElementById("globalShapChart"), {
+      type: "bar",
+      data: {
+        labels: chartFeatures.map(x => x.feature),
+        datasets: [{
+          label: "Mean absolute SHAP",
+          data: chartFeatures.map(x => Number(x.mean_abs_shap)),
+          backgroundColor: "rgba(13, 110, 253, 0.78)",
+          borderColor: "#0d6efd",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, title: { display: true, text: "Mean absolute SHAP value" } } }
+      }
+    });
+    const body = document.getElementById("globalShapTable");
+    body.innerHTML = "";
+    features.forEach((item, index) => {
+      const tr = document.createElement("tr");
+      const values = [
+        index + 1,
+        item.feature,
+        Number(item.mean_abs_shap).toFixed(6),
+        Number(item.positive_contribution_pct).toFixed(1) + "%",
+        Number(item.negative_contribution_pct).toFixed(1) + "%",
+        item.net_direction
+      ];
+      values.forEach((value, cellIndex) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        if (cellIndex === 3) td.className = "text-danger";
+        if (cellIndex === 4) td.className = "text-success";
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    document.getElementById("globalShapBadge").textContent =
+      data.explained_sample_records + " held-out builds | " + data.raw_feature_count + " raw features";
+    const image = document.getElementById("globalShapSummaryImage");
+    image.src = "http://127.0.0.1:8000" + data.summary_plot_url;
+    image.style.display = "block";
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove("d-none");
+    document.getElementById("globalShapBadge").textContent = "SHAP results unavailable";
+  }
+}
+
+async function loadProjectLevelPerformance() {
+  const errorBox = document.getElementById("projectLevelError");
+  const put = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  const pct = value => (Number(value) * 100).toFixed(2) + "%";
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/project-level-performance");
+    if (!response.ok) throw new Error("Run backend/evaluate_project_level.py first.");
+    const data = await response.json();
+    put("plTestRecords", data.test_records);
+    put("plProjectCount", data.project_count_in_test);
+    put("plSmallCount", data.projects.filter(p => p.small_sample_warning).length);
+    put("projectLevelBadge", data.project_count_in_test + " projects | random held-out test");
+    const body = document.getElementById("projectLevelTable");
+    body.innerHTML = "";
+    data.projects.forEach(p => {
+      const tr = document.createElement("tr");
+      [p.project,p.builds,p.successes,p.failures,pct(p.accuracy),pct(p.failure_precision),pct(p.failure_recall),pct(p.failure_f1),p.small_sample_warning ? "Small sample" : "OK"].forEach((v,i) => {
+        const td=document.createElement("td"); td.textContent=v;
+        if(i===8 && p.small_sample_warning) td.className="text-warning fw-semibold";
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  } catch(e) { errorBox.textContent=e.message; errorBox.classList.remove("d-none"); put("projectLevelBadge","Project metrics unavailable"); }
+}
+async function loadErrorAnalysis() {
+  const errorBox = document.getElementById("errorAnalysisError");
+  const put = (id, value) => { const el=document.getElementById(id); if(el) el.textContent=value; };
+  try {
+    const response=await fetch("http://127.0.0.1:8000/api/error-analysis");
+    if(!response.ok) throw new Error("Run backend/evaluate_error_analysis.py first.");
+    const data=await response.json(), c=data.counts;
+    put("eaFalsePositive",c.false_positive);
+    put("eaFalseNegative",c.false_negative);
+    put("eaCorrectFailure",c.correct_failure);
+    put("eaCorrectSuccess",c.correct_success);
+    put("errorAnalysisBadge",data.test_records+" held-out builds | "+c.total_misclassified+" errors");
+    const body=document.getElementById("errorAnalysisTable"); body.innerHTML="";
+    (data.misclassified_examples||[]).forEach(item=>{
+      const tr=document.createElement("tr");
+      [item.error_type,item.actual,item.predicted,(Number(item.failure_probability)*100).toFixed(2)+"%",item.gh_project_name||"—",item.tr_build_id||"—"].forEach(v=>{
+        const td=document.createElement("td"); td.textContent=v; tr.appendChild(td);
+      });
+      if(item.error_type==="False Negative") tr.className="table-warning";
+      body.appendChild(tr);
+    });
+    if(!body.children.length) body.innerHTML='<tr><td colspan="6" class="text-center text-muted">No misclassified records found.</td></tr>';
+  } catch(e) { errorBox.textContent=e.message; errorBox.classList.remove("d-none"); put("errorAnalysisBadge","Error results unavailable"); }
+}
+loadProjectLevelPerformance();
+loadErrorAnalysis();
+
+async function loadBootstrapConfidenceIntervals() {
+  const errorBox = document.getElementById("bootstrapCiError");
+  const body = document.getElementById("bootstrapCiTable");
+  const pct = value => (Number(value) * 100).toFixed(2) + "%";
+  const labels = {
+    accuracy: "Accuracy",
+    failure_precision: "Failure precision",
+    failure_recall: "Failure recall",
+    failure_f1: "Failure F1-score",
+    roc_auc: "Failure ROC-AUC"
+  };
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/bootstrap-confidence-intervals");
+    if (!response.ok) throw new Error("Run backend/evaluate_bootstrap_ci.py first.");
+    const data = await response.json();
+    body.innerHTML = "";
+    Object.entries(labels).forEach(([key,label]) => {
+      const m=data.metrics[key], tr=document.createElement("tr");
+      [label,pct(m.estimate),pct(m.ci_95_lower),pct(m.ci_95_upper),pct(m.bootstrap_std)].forEach(v=>{
+        const td=document.createElement("td"); td.textContent=v; tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    document.getElementById("bootstrapCiBadge").textContent =
+      data.bootstrap_replicates_used+" bootstrap samples | "+data.test_records+" test builds";
+    document.getElementById("bootstrapCiMethod").textContent =
+      "Method: "+data.bootstrap_method+". Positive class: "+data.positive_class+
+      ". Confidence level: "+(Number(data.confidence_level)*100).toFixed(0)+"%.";
+  } catch(e) {
+    errorBox.textContent=e.message;
+    errorBox.classList.remove("d-none");
+    document.getElementById("bootstrapCiBadge").textContent="Confidence intervals unavailable";
+  }
+}
+loadBootstrapConfidenceIntervals();
+
+async function loadDecisionThresholdAnalysis() {
+  const errorBox=document.getElementById("thresholdError");
+  const put=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
+  const pct=v=>(Number(v)*100).toFixed(2)+"%";
+  try {
+    const response=await fetch("http://127.0.0.1:8000/api/decision-threshold-analysis");
+    if(!response.ok) throw new Error("Run backend/evaluate_decision_threshold.py first.");
+    const data=await response.json();
+    const chosen=data.threshold_selection.selected_threshold;
+    const vm=data.threshold_selection.selected_validation_metrics;
+    const selected=data.held_out_test_results.selected_threshold;
+    const baseline=data.held_out_test_results.default_threshold_0_50;
+    put("selectedThreshold",Number(chosen).toFixed(2));
+    put("validationThresholdF1",pct(vm.failure_f1));
+    put("testThresholdF1",pct(selected.failure_f1));
+    put("testThresholdRecall",pct(selected.failure_recall));
+    put("thresholdBadge","Validation-selected | "+data.test_records+" test builds");
+    document.getElementById("decisionThresholdPlot").src=
+      "http://127.0.0.1:8000/api/decision-threshold-analysis/plot?v="+Date.now();
+    const body=document.getElementById("thresholdTestTable");body.innerHTML="";
+    [[chosen,selected], [0.50,baseline]].forEach(([t,m])=>{
+      const tr=document.createElement("tr");
+      [Number(t).toFixed(2),pct(m.accuracy),pct(m.failure_precision),pct(m.failure_recall),
+       pct(m.failure_f1),m.false_positives,m.false_negatives].forEach(v=>{
+        const td=document.createElement("td");td.textContent=v;tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  } catch(e) {errorBox.textContent=e.message;errorBox.classList.remove("d-none");put("thresholdBadge","Threshold results unavailable");}
+}
+loadDecisionThresholdAnalysis();
+
+
+
+
+
+async function loadRocPrCurves() {
+  const errorBox = document.getElementById("rocPrError");
+  const put = (id, value) => { const el=document.getElementById(id); if(el) el.textContent=value; };
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/evaluation-curves/metrics");
+    if (!response.ok) throw new Error("Run backend/evaluate_roc_pr_curves.py first.");
+    const data = await response.json();
+    put("rocAucMetric", Number(data.roc_auc).toFixed(4));
+    put("averagePrecisionMetric", Number(data.average_precision).toFixed(4));
+    put("failurePrevalenceMetric", (Number(data.failure_prevalence)*100).toFixed(2)+"%");
+    put("rocPrTestRecords", data.test_records);
+    put("rocPrBadge", data.positive_class+" positive class | "+data.test_records+" held-out builds");
+    document.getElementById("rocCurveImage").src =
+      "http://127.0.0.1:8000" + data.roc_curve_image + "?v=" + Date.now();
+    document.getElementById("prCurveImage").src =
+      "http://127.0.0.1:8000" + data.precision_recall_curve_image + "?v=" + Date.now();
+  } catch (e) {
+    errorBox.textContent=e.message;
+    errorBox.classList.remove("d-none");
+    put("rocPrBadge","Curve results unavailable");
+  }
+}
+loadRocPrCurves();
+
+
+
+loadGlobalShap();
+
+const API_URL = "http://127.0.0.1:8000/api/predict";
+const numericFields = [
+  "git_diff_src_churn", "gh_diff_files_added", "gh_diff_files_deleted",
+  "gh_diff_files_modified", "gh_diff_src_files", "gh_diff_doc_files",
+  "gh_diff_other_files", "gh_sloc", "gh_num_commits_on_files_touched",
+  "code_churn_rate", "files_changed_total", "gh_diff_tests_added",
+  "gh_diff_tests_deleted", "gh_test_lines_per_kloc", "gh_test_cases_per_kloc",
+  "gh_asserts_cases_per_kloc", "gh_team_size", "gh_by_core_team_member"
+];
+
+document.getElementById("predictionForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const btn = document.getElementById("submitBtn");
+  const errorBox = document.getElementById("errorBox");
+  const resultSection = document.getElementById("result");
+  errorBox.classList.add("d-none");
+  resultSection.classList.add("d-none");
+
+  const payload = {};
+  numericFields.forEach((name) => {
+    payload[name] = Number(document.getElementById(name).value);
+  });
+  payload.git_prev_commit_resolution_status =
+    document.getElementById("git_prev_commit_resolution_status").value;
+
+  btn.disabled = true;
+  btn.textContent = "Predicting...";
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      const detail = body.detail || JSON.stringify(body);
+      throw new Error(detail);
+    }
+
+    document.getElementById("predictionBadge").textContent =
+      "Prediction: " + body.prediction;
+    document.getElementById("predictionBadge").className =
+      "h3 mb-4 " + (body.prediction === "FAILURE" ? "text-danger" : "text-success");
+
+    document.getElementById("failureProbability").textContent = body.failure_probability + "%";
+    document.getElementById("successProbability").textContent = body.success_probability + "%";
+    document.getElementById("failureBar").style.width = body.failure_probability + "%";
+    document.getElementById("successBar").style.width = body.success_probability + "%";
+    document.getElementById("failureBar").setAttribute("aria-valuenow", body.failure_probability);
+    document.getElementById("successBar").setAttribute("aria-valuenow", body.success_probability);
+
+    const individualChartCanvas = document.getElementById("individualPredictionChart");
+    const individualChartData = {
+      labels: ["Success probability", "Failure probability"],
+      datasets: [{
+        label: "This build",
+        data: [Number(body.success_probability), Number(body.failure_probability)],
+        backgroundColor: ["rgba(25, 135, 84, 0.78)", "rgba(220, 53, 69, 0.78)"],
+        borderColor: ["#198754", "#dc3545"],
+        borderWidth: 1
+      }]
+    };
+    if (individualPredictionChartInstance) {
+      individualPredictionChartInstance.data = individualChartData;
+      individualPredictionChartInstance.update();
+    } else {
+      individualPredictionChartInstance = new Chart(individualChartCanvas, {
+        type: "bar",
+        data: individualChartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              beginAtZero: true,
+              max: 100,
+              title: { display: true, text: "Probability (%)" }
+            }
+          }
+        }
+      });
+    }
+
+    const factorContainer = document.getElementById("topFactors");
+    factorContainer.replaceChildren();
+    const maxImpact = Math.max(0.000001, ...body.top_factors.map(f => Math.abs(f.shap_value)));
+    body.top_factors.forEach((factor) => {
+      const row = document.createElement("div");
+      row.className = "mb-3";
+      const heading = document.createElement("div");
+      heading.className = "d-flex justify-content-between gap-3 small mb-1";
+      const name = document.createElement("strong");
+      name.textContent = factor.feature;
+      const value = document.createElement("span");
+      value.textContent = `Value: ${factor.value} | SHAP: ${factor.shap_value}`;
+      heading.append(name, value);
+      const bar = document.createElement("div");
+      bar.className = "factor-bar";
+      const fill = document.createElement("span");
+      fill.style.width = (Math.abs(factor.shap_value) / maxImpact * 100) + "%";
+      if (factor.shap_value < 0) fill.style.background = "#198754";
+      bar.appendChild(fill);
+      row.append(heading, bar);
+      factorContainer.appendChild(row);
+    });
+
+    const recList = document.getElementById("recommendations");
+    recList.replaceChildren();
+    (body.recommendations || []).forEach((recommendation) => {
+      const li = document.createElement("li");
+      li.textContent = recommendation;
+      li.className = "mb-2";
+      recList.appendChild(li);
+    });
+    if (!body.recommendations || body.recommendations.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "No additional recommendations returned.";
+      recList.appendChild(li);
+    }
+    document.getElementById("evaluationResults").classList.remove("d-none");
+    if (evaluationChartInstance) evaluationChartInstance.resize();
+    resultSection.classList.remove("d-none");
+    resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    errorBox.textContent = "Prediction request failed: " + error.message;
+    errorBox.classList.remove("d-none");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Predict build";
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+
+# Model artifacts
+*.joblib
+*.pkl
+
+# Datasets and archives
+data/
+*.csv
+*.zip
+*.7z
+
+# Backups
+*backup*/
+backups/
+
+# Environment and secrets
+.env
+.env.*
+
+# Generated files
+build_features.json
