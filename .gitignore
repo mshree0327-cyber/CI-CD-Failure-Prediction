@@ -26,3 +26,6 @@ backups/
 
 # Generated files
 build_features.json
+# Jenkins CLI and temporary backups
+jenkins-cli.jar
+extractor_test/tests/front-backup.txt

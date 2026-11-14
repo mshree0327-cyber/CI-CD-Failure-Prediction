@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from recommendations import generate_recommendations
+from  .recommendations import generate_recommendations
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_FILE = BASE_DIR / "random_forest_model.joblib"

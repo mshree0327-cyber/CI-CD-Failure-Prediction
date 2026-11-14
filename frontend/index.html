@@ -1,12 +1,13 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Leakage-Aware CI/CD Failure Prediction</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CI/CD Failure Prediction | Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
     body { background:#f4f6f9; }
     .hero { background:#14213d; color:#fff; border-radius:16px; }
     .card { border:0; border-radius:14px; }
@@ -15,434 +16,481 @@
     .factor-bar > span { display:block; height:100%; background:#0d6efd; }
     .required-note { font-size:.85rem; color:#6c757d; }
   </style>
-</head>
+<style>
+:root{--ink:#17233b;--muted:#6b7890;--line:#e7ebf2;--surface:#ffffff;--canvas:#f4f7fb;--brand:#315efb;--brand-soft:#edf2ff;}
+body{background:var(--canvas);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+.dashboard-shell{max-width:1500px;padding-left:clamp(14px,2.5vw,36px);padding-right:clamp(14px,2.5vw,36px);}
+.hero{background:linear-gradient(115deg,#14213d 0%,#243d70 65%,#315efb 100%);color:#fff;border:0;border-radius:20px;box-shadow:0 12px 32px rgba(22,42,83,.12);}
+.hero .eyebrow{font-size:.72rem;letter-spacing:.13em;text-transform:uppercase;color:#c7d5ff;font-weight:700;}
+.hero h1{font-weight:750;letter-spacing:-.035em;}
+.hero .hero-subtitle{max-width:760px;color:rgba(255,255,255,.75);}
+.card{border:1px solid var(--line);border-radius:16px;box-shadow:0 4px 18px rgba(25,42,70,.045)!important;}
+.card-body{padding:clamp(18px,2vw,28px)!important;}
+.dashboard-nav{display:flex;gap:8px;flex-wrap:wrap;padding:8px;background:#eaf0f8;border:1px solid #e3eaf4;border-radius:14px;margin:18px 0 22px;}
+.dashboard-nav button{border:0;border-radius:10px;padding:10px 16px;background:transparent;color:#52617a;font-weight:650;font-size:.92rem;transition:.18s ease;}
+.dashboard-nav button:hover{background:rgba(255,255,255,.7);color:var(--ink);}
+.dashboard-nav button.active{background:#fff;color:var(--brand);box-shadow:0 2px 8px rgba(30,50,90,.09);}
+.tab-pane{display:none;}.tab-pane.active{display:block;}
+.section-kicker{color:var(--brand);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;font-weight:750;}
+.overview-tile{height:100%;background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;}
+.overview-tile .tile-icon{width:38px;height:38px;border-radius:11px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-weight:800;margin-bottom:14px;}
+.overview-tile h3{font-size:1rem;font-weight:700;}.overview-tile p{color:var(--muted);font-size:.9rem;margin:0;}
+.card h2,.card h3{color:var(--ink);font-weight:700;letter-spacing:-.015em;}
+.text-muted{color:var(--muted)!important;}
+.form-label{font-size:.88rem;font-weight:650;color:#35445e;}
+.form-control,.form-select{border-color:#dce3ed;border-radius:10px;min-height:43px;}
+.form-control:focus,.form-select:focus{border-color:#8da7ff;box-shadow:0 0 0 .2rem rgba(49,94,251,.12);}
+.btn-primary{background:var(--brand);border-color:var(--brand);border-radius:10px;font-weight:650;}
+.btn-outline-secondary{border-radius:10px;}
+.table{--bs-table-border-color:#e7ebf2;font-size:.88rem;}
+.table thead th{white-space:nowrap;color:#42516a;font-size:.8rem;}
+.badge{font-weight:650;}
+.factor-bar{background:#edf1f6;}
+.required-note{color:var(--muted);}
+.tab-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:4px 0 18px;}
+.tab-heading h2{font-size:1.35rem;font-weight:750;letter-spacing:-.03em;margin:0;}
+.tab-heading p{color:var(--muted);margin:5px 0 0;font-size:.92rem;}
+@media(max-width:575px){.dashboard-nav{display:grid;grid-template-columns:1fr 1fr;}.dashboard-nav button{padding:10px 8px;font-size:.84rem}.hero{padding:24px!important}.hero h1{font-size:1.65rem}.table{font-size:.8rem}}
+</style></head>
 <body>
-<div class="container py-4 py-lg-5">
-  <header class="hero p-4 p-lg-5 mb-4">
-    <h1 class="h2 mb-2">CI/CD Failure Prediction</h1>
-    <p class="mb-0 text-white-50">Leakage-aware and explainable pre-build prediction using audited repository features.</p>
-  </header>
+<div class="container-fluid dashboard-shell py-3 py-lg-4">
+<header class="hero p-4 p-lg-5 mb-3"><div class="eyebrow mb-2">Machine learning · DevOps analytics</div><h1 class="display-6 mb-2">CI/CD Failure Prediction</h1><p class="hero-subtitle mb-0">A leakage-aware dashboard for pre-build risk prediction, model evaluation and SHAP-based explanations.</p></header>
+<div class="alert alert-info border-0 mb-3" style="border-radius:12px;background:#edf4ff;color:#29456f;"><strong>Pre-build data only:</strong> Enter information available before the current build starts. Do not enter build duration, test results, current build status, or other execution outcomes.</div>
 
-  <div class="alert alert-info">
-    Enter information available <strong>before the current build starts</strong>. Do not enter build duration, test results, current build status, or other execution outcomes.
-  </div>
 
-  <div id="evaluationResults" class="d-none">
-  <section class="card shadow-sm mb-4" aria-labelledby="evaluationTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-        <div>
-          <h2 id="evaluationTitle" class="h5 mb-1">Random vs Chronological Evaluation</h2>
-          <p class="text-muted small mb-0">Random Forest performance using the same 19 pre-build features.</p>
-        </div>
-        <span class="badge text-bg-secondary">Metrics loaded from held-out evaluation</span>
-      </div>
-      <div style="height:360px; position:relative;">
-        <canvas id="evaluationChart" role="img" aria-label="Grouped bar chart comparing random and chronological model evaluation metrics"></canvas>
-      </div>
-      <p class="text-muted small mt-3 mb-0">
+
+
+
+
+
+
+
+
+
+<nav aria-label="Dashboard sections" class="dashboard-nav">
+<button aria-selected="true" class="active" data-tab="overview" type="button">⌂  Overview</button>
+<button aria-selected="false" data-tab="prediction" type="button">＋  Predict Build</button>
+<button aria-selected="false" data-tab="evaluation" type="button">▥  Model Evaluation</button>
+<button aria-selected="false" data-tab="explainability" type="button">✳  Explainability</button>
+</nav><main>
+<section class="tab-pane active" id="tab-overview" role="tabpanel">
+<div class="tab-heading"><div><div class="section-kicker">Workspace</div><h2>Model workspace</h2><p>Run a pre-build prediction or inspect the model’s research evaluation.</p></div></div>
+<div class="row g-3 mb-4">
+<div class="col-md-4"><div class="overview-tile"><div class="tile-icon">01</div><h3>Predict a build</h3><p>Submit the 19 pre-build repository and code-change features to estimate failure risk.</p><button class="btn btn-primary btn-sm mt-3" data-go="prediction" type="button">Open prediction form</button></div></div>
+<div class="col-md-4"><div class="overview-tile"><div class="tile-icon">02</div><h3>Evaluate the model</h3><p>Review random, chronological and unseen-project evaluation, baselines and error analysis.</p><button class="btn btn-outline-primary btn-sm mt-3" data-go="evaluation" type="button">View evaluation</button></div></div>
+<div class="col-md-4"><div class="overview-tile"><div class="tile-icon">03</div><h3>Understand predictions</h3><p>Explore global SHAP feature importance and the contribution direction of model features.</p><button class="btn btn-outline-primary btn-sm mt-3" data-go="explainability" type="button">View explainability</button></div></div>
+</div>
+<div class="card"><div class="card-body"><div class="section-kicker mb-2">How to use</div><h3 class="h5 mb-2">A simple pre-build workflow</h3><ol class="mb-0 text-muted"><li class="mb-1">Provide the repository and code-change features available before a build starts.</li><li class="mb-1">Run the prediction and review the failure and success probabilities.</li><li>Use SHAP factors and recommendations to understand the prediction, then consult evaluation results for model performance context.</li></ol></div></div>
+</section>
+<section class="tab-pane" id="tab-prediction" role="tabpanel"><div class="tab-heading"><div><div class="section-kicker">Inference</div><h2>Predict build outcome</h2><p>Enter the 19 model features and submit them for a prediction.</p></div><span class="badge text-bg-primary rounded-pill px-3 py-2">19 pre-build features</span></div><div class="card mb-4">
+<div class="card-body">
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h2 class="h5 mb-1">Build input features</h2>
+<span class="badge text-bg-primary">19 pre-build features</span>
+</div>
+<form id="predictionForm">
+<div class="row g-3">
+<div class="col-md-6 col-lg-4"><label class="form-label" for="git_diff_src_churn">Source code churn</label><input class="form-control" id="git_diff_src_churn" min="0" required="" step="any" type="number" value="120"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_added">Files added</label><input class="form-control" id="gh_diff_files_added" min="0" required="" step="any" type="number" value="3"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_deleted">Files deleted</label><input class="form-control" id="gh_diff_files_deleted" min="0" required="" step="any" type="number" value="2"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_modified">Files modified</label><input class="form-control" id="gh_diff_files_modified" min="0" required="" step="any" type="number" value="5"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_src_files">Source files changed</label><input class="form-control" id="gh_diff_src_files" min="0" required="" step="any" type="number" value="8"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_doc_files">Documentation files changed</label><input class="form-control" id="gh_diff_doc_files" min="0" required="" step="any" type="number" value="1"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_other_files">Other files changed</label><input class="form-control" id="gh_diff_other_files" min="0" required="" step="any" type="number" value="1"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_sloc">Source lines of code (SLOC)</label><input class="form-control" id="gh_sloc" min="0" required="" step="any" type="number" value="500"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_num_commits_on_files_touched">Commits on files touched</label><input class="form-control" id="gh_num_commits_on_files_touched" min="0" required="" step="any" type="number" value="4"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="code_churn_rate">Code churn rate</label><input class="form-control" id="code_churn_rate" min="0" required="" step="any" type="number" value="0.25"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="files_changed_total">Total files changed</label><input class="form-control" id="files_changed_total" min="0" required="" step="any" type="number" value="10"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="git_prev_commit_resolution_status">Previous commit resolution status</label>
+<select class="form-select" id="git_prev_commit_resolution_status" required="">
+<option selected="" value="build_found">Build found</option>
+<option value="merge_found">Merge found</option>
+<option value="no_previous_build">No previous build</option>
+</select>
+</div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_tests_added">Test files/lines added</label><input class="form-control" id="gh_diff_tests_added" min="0" required="" step="any" type="number" value="2"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_tests_deleted">Test files/lines deleted</label><input class="form-control" id="gh_diff_tests_deleted" min="0" required="" step="any" type="number" value="0"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_test_lines_per_kloc">Test lines per KLOC</label><input class="form-control" id="gh_test_lines_per_kloc" min="0" required="" step="any" type="number" value="15"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_test_cases_per_kloc">Test cases per KLOC</label><input class="form-control" id="gh_test_cases_per_kloc" min="0" required="" step="any" type="number" value="10"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_asserts_cases_per_kloc">Assertions per KLOC</label><input class="form-control" id="gh_asserts_cases_per_kloc" min="0" required="" step="any" type="number" value="8"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_team_size">Team size</label><input class="form-control" id="gh_team_size" min="0" required="" step="any" type="number" value="5"/></div>
+<div class="col-md-6 col-lg-4"><label class="form-label" for="gh_by_core_team_member">Core team member indicator/value</label><input class="form-control" id="gh_by_core_team_member" min="0" required="" step="any" type="number" value="1"/></div>
+</div>
+<div class="d-flex gap-2 mt-4">
+<button class="btn btn-primary px-4" id="submitBtn" type="submit">Predict build</button>
+<button class="btn btn-outline-secondary" type="reset">Reset</button>
+</div>
+<p class="required-note mt-3 mb-0">All fields are sent to the backend using the exact 19-feature model schema.</p>
+</form>
+</div>
+</div><div class="alert alert-danger d-none" id="errorBox" role="alert"></div><section class="d-none" id="result">
+<div class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<h2 class="h5 mb-3">Prediction result</h2>
+<div class="h3 mb-4" id="predictionBadge"></div>
+<div class="row g-4">
+<div class="col-md-6">
+<div class="d-flex justify-content-between"><span>Failure probability</span><strong id="failureProbability"></strong></div>
+<div class="progress mt-2" style="height:12px"><div class="progress-bar bg-danger" id="failureBar" role="progressbar"></div></div>
+</div>
+<div class="col-md-6">
+<div class="d-flex justify-content-between"><span>Success probability</span><strong id="successProbability"></strong></div>
+<div class="progress mt-2" style="height:12px"><div class="progress-bar bg-success" id="successBar" role="progressbar"></div></div>
+</div>
+</div>
+</div>
+</div>
+<div class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<h2 class="h5 mb-1">Individual Build Prediction Analysis</h2>
+<p class="text-muted small mb-3">Probabilities for the build entered above. This chart updates after each successful prediction.</p>
+<div style="height:280px; position:relative;">
+<canvas aria-label="Bar chart showing this build's predicted success and failure probabilities" id="individualPredictionChart" role="img"></canvas>
+</div>
+</div>
+</div>
+<div class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<h2 class="h5 mb-3">Top SHAP factors</h2>
+<p class="text-muted small">Positive SHAP values support the predicted class; negative values oppose it, according to the backend explanation.</p>
+<div id="topFactors"></div>
+</div>
+</div>
+<div class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<h2 class="h5 mb-3">Recommendations</h2>
+<ul class="mb-0" id="recommendations"></ul>
+</div>
+</div>
+</section></section>
+<section class="tab-pane" id="tab-evaluation" role="tabpanel"><div class="tab-heading"><div><div class="section-kicker">Research results</div><h2>Model evaluation</h2><p>Performance across data splits, baseline comparisons, uncertainty and held-out errors.</p></div></div><div class="" id="evaluationResults">
+<section aria-labelledby="evaluationTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+<div>
+<h2 class="h5 mb-1" id="evaluationTitle">Random vs Chronological Evaluation</h2>
+<p class="text-muted small mb-0">Random Forest performance using the same 19 pre-build features.</p>
+</div>
+<span class="badge text-bg-secondary">Metrics loaded from held-out evaluation</span>
+</div>
+<div style="height:360px; position:relative;">
+<canvas aria-label="Grouped bar chart comparing random and chronological model evaluation metrics" id="evaluationChart" role="img"></canvas>
+</div>
+<p class="text-muted small mt-3 mb-0">
         Random split: 3,763 training / 941 testing builds.
         Chronological split: 3,763 earlier training / 941 later testing builds.
         Chronological results apply only to builds matched with the timestamp archive.
       </p>
-    </div>
-  </section>
-
-  <!-- Confusion Matrix Comparison -->
-  <section class="card shadow-sm mb-4" aria-labelledby="confusionTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div>
-          <h2 id="confusionTitle" class="h5 mb-1">Confusion Matrix Comparison</h2>
-          <p class="text-muted small mb-0">
+</div>
+</section>
+<!-- Confusion Matrix Comparison -->
+<section aria-labelledby="confusionTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div>
+<h2 class="h5 mb-1" id="confusionTitle">Confusion Matrix Comparison</h2>
+<p class="text-muted small mb-0">
             Actual versus predicted CI/CD build outcomes using the same 19 pre-build features.
           </p>
-        </div>
-        <span class="badge text-bg-secondary">941 test builds each</span>
-      </div>
-
-      <div class="row g-4">
-        <div class="col-md-6">
-          <h3 class="h6 text-primary mb-3">Random Stratified Split</h3>
-          <div class="table-responsive">
-            <table class="table table-bordered text-center align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th scope="col">Actual / Predicted</th>
-                  <th scope="col">Success</th>
-                  <th scope="col">Failure</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">Success</th>
-                  <td id="randomCmSS" class="table-success fw-bold">537</td>
-                  <td id="randomCmSF">79</td>
-                </tr>
-                <tr>
-                  <th scope="row">Failure</th>
-                  <td id="randomCmFS">143</td>
-                  <td id="randomCmFF" class="table-warning fw-bold">182</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="small text-muted mb-0">Accuracy: <strong id="randomAccuracy">—</strong></p>
-        </div>
-
-        <div class="col-md-6">
-          <h3 class="h6 text-warning mb-3">Chronological Split</h3>
-          <div class="table-responsive">
-            <table class="table table-bordered text-center align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th scope="col">Actual / Predicted</th>
-                  <th scope="col">Success</th>
-                  <th scope="col">Failure</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">Success</th>
-                  <td id="chronoCmSS" class="table-success fw-bold">551</td>
-                  <td id="chronoCmSF">98</td>
-                </tr>
-                <tr>
-                  <th scope="row">Failure</th>
-                  <td id="chronoCmFS">178</td>
-                  <td id="chronoCmFF" class="table-warning fw-bold">114</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="small text-muted mb-0">Accuracy: <strong id="chronoAccuracy">—</strong></p>
-        </div>
-      </div>
-
-      <div class="alert alert-light border small mt-3 mb-0">
-        <strong>Interpretation:</strong> Rows represent actual outcomes and columns represent predicted outcomes.
+</div>
+<span class="badge text-bg-secondary">941 test builds each</span>
+</div>
+<div class="row g-4">
+<div class="col-md-6">
+<h3 class="h6 text-primary mb-3">Random Stratified Split</h3>
+<div class="table-responsive">
+<table class="table table-bordered text-center align-middle">
+<thead class="table-light">
+<tr>
+<th scope="col">Actual / Predicted</th>
+<th scope="col">Success</th>
+<th scope="col">Failure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Success</th>
+<td class="table-success fw-bold" id="randomCmSS">537</td>
+<td id="randomCmSF">79</td>
+</tr>
+<tr>
+<th scope="row">Failure</th>
+<td id="randomCmFS">143</td>
+<td class="table-warning fw-bold" id="randomCmFF">182</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="small text-muted mb-0">Accuracy: <strong id="randomAccuracy">—</strong></p>
+</div>
+<div class="col-md-6">
+<h3 class="h6 text-warning mb-3">Chronological Split</h3>
+<div class="table-responsive">
+<table class="table table-bordered text-center align-middle">
+<thead class="table-light">
+<tr>
+<th scope="col">Actual / Predicted</th>
+<th scope="col">Success</th>
+<th scope="col">Failure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Success</th>
+<td class="table-success fw-bold" id="chronoCmSS">551</td>
+<td id="chronoCmSF">98</td>
+</tr>
+<tr>
+<th scope="row">Failure</th>
+<td id="chronoCmFS">178</td>
+<td class="table-warning fw-bold" id="chronoCmFF">114</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="small text-muted mb-0">Accuracy: <strong id="chronoAccuracy">—</strong></p>
+</div>
+</div>
+<div class="alert alert-light border small mt-3 mb-0">
+<strong>Interpretation:</strong> Rows represent actual outcomes and columns represent predicted outcomes.
         Diagonal cells show correct predictions; off-diagonal cells show incorrect predictions.
       </div>
-    </div>
-  </section>
-  <!-- End Confusion Matrix Comparison -->
-
-  <section class="card shadow-sm mb-4" aria-labelledby="projectGroupedTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-        <div>
-          <h2 id="projectGroupedTitle" class="h5 mb-1">Project-Grouped Evaluation (Unseen Projects)</h2>
-          <p class="text-muted small mb-0">Entire repositories are kept separate across training, validation and testing. The test projects are unseen during model training.</p>
-        </div>
-        <span class="badge text-bg-secondary" id="projectGroupedBadge">Loading project-grouped results...</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-bordered table-sm align-middle text-center">
-          <thead class="table-light"><tr><th>Partition</th><th>Build records</th><th>Projects</th><th>Success</th><th>Failure</th></tr></thead>
-          <tbody>
-            <tr><th>Training</th><td id="pgTrainRecords">—</td><td id="pgTrainProjects">—</td><td id="pgTrainSuccess">—</td><td id="pgTrainFailure">—</td></tr>
-            <tr><th>Validation</th><td id="pgValRecords">—</td><td id="pgValProjects">—</td><td id="pgValSuccess">—</td><td id="pgValFailure">—</td></tr>
-            <tr><th>Held-out test</th><td id="pgTestRecords">—</td><td id="pgTestProjects">—</td><td id="pgTestSuccess">—</td><td id="pgTestFailure">—</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <h3 class="h6 mt-3">Held-out unseen-project test performance</h3>
-      <div class="row g-2 small">
-        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Accuracy</div><strong id="pgAccuracy">—</strong></div></div>
-        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure precision</div><strong id="pgPrecision">—</strong></div></div>
-        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure recall</div><strong id="pgRecall">—</strong></div></div>
-        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure F1</div><strong id="pgF1">—</strong></div></div>
-        <div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure ROC-AUC</div><strong id="pgAuc">—</strong></div></div>
-      </div>
-      <h3 class="h6 mt-3">Project-grouped confusion matrix</h3>
-      <div class="table-responsive" style="max-width:520px;">
-        <table class="table table-bordered text-center align-middle">
-          <thead class="table-light"><tr><th>Actual / Predicted</th><th>Success</th><th>Failure</th></tr></thead>
-          <tbody>
-            <tr><th>Success</th><td id="pgCmSS" class="table-success fw-bold">—</td><td id="pgCmSF">—</td></tr>
-            <tr><th>Failure</th><td id="pgCmFS">—</td><td id="pgCmFF" class="table-warning fw-bold">—</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-muted small mb-0">This is a separate experiment from random and chronological evaluation. Project names are used only for splitting, never as model input features.</p>
-    </div>
-  </section>
-
-  <section class="card shadow-sm mb-4" aria-labelledby="baselineTitle">
-    <div class="card-body p-4">
-      <h2 id="baselineTitle" class="h5 mb-1">Baseline Model Comparison</h2>
-      <p class="text-muted small">Simple baselines evaluated on the same held-out partitions. The previous-build baseline is available only for timestamp-matched chronological testing.</p>
-      <div class="table-responsive">
-        <table class="table table-bordered table-sm align-middle text-center">
-          <thead class="table-light">
-            <tr><th>Experiment / baseline</th><th>Records scored</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th></tr>
-          </thead>
-          <tbody>
-            <tr><th>Random Forest – random</th><td id="rfRandomN">—</td><td id="rfRandomAcc">—</td><td id="rfRandomPrec">—</td><td id="rfRandomRec">—</td><td id="rfRandomF1">—</td></tr>
-            <tr><th>Majority – random</th><td id="baseRandomN">—</td><td id="baseRandomAcc">—</td><td id="baseRandomPrec">—</td><td id="baseRandomRec">—</td><td id="baseRandomF1">—</td></tr>
-            <tr><th>Random Forest – chronological</th><td id="rfChronoN">—</td><td id="rfChronoAcc">—</td><td id="rfChronoPrec">—</td><td id="rfChronoRec">—</td><td id="rfChronoF1">—</td></tr>
-            <tr><th>Majority – chronological</th><td id="baseChronoN">—</td><td id="baseChronoAcc">—</td><td id="baseChronoPrec">—</td><td id="baseChronoRec">—</td><td id="baseChronoF1">—</td></tr>
-            <tr><th>Previous build outcome – chronological</th><td id="basePrevN">—</td><td id="basePrevAcc">—</td><td id="basePrevPrec">—</td><td id="basePrevRec">—</td><td id="basePrevF1">—</td></tr>
-            <tr><th>Random Forest – project-grouped</th><td id="rfGroupN">—</td><td id="rfGroupAcc">—</td><td id="rfGroupPrec">—</td><td id="rfGroupRec">—</td><td id="rfGroupF1">—</td></tr>
-            <tr><th>Majority – project-grouped</th><td id="baseGroupN">—</td><td id="baseGroupAcc">—</td><td id="baseGroupPrec">—</td><td id="baseGroupRec">—</td><td id="baseGroupF1">—</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-muted small mb-0">Previous-build baseline predicts the current build from the immediately preceding build outcome in the same project. Six of 706 chronological test records were excluded because no strictly earlier, unambiguous prior build was available.</p>
-    </div>
-  </section>
-
-
 </div>
-
-
-
-  <section class="card shadow-sm mb-4" aria-labelledby="projectLevelTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div><h2 id="projectLevelTitle" class="h5 mb-1">Project-Level Performance Analysis</h2>
-        <p class="text-muted small mb-0">Random Forest metrics grouped by repository on the random held-out test partition. Project names are used only for reporting, not as model inputs.</p></div>
-        <span class="badge text-bg-secondary" id="projectLevelBadge">Loading project metrics...</span>
-      </div>
-      <div id="projectLevelError" class="alert alert-warning d-none mt-3"></div>
-      <div class="row g-2 mt-2">
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test builds</div><strong id="plTestRecords">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Projects represented</div><strong id="plProjectCount">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Small samples (&lt;10)</div><strong id="plSmallCount">—</strong></div></div>
-      </div>
-      <div class="table-responsive mt-3"><table class="table table-bordered table-sm align-middle">
-        <thead class="table-light"><tr><th>Project</th><th>Builds</th><th>Success</th><th>Failure</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th><th>Sample note</th></tr></thead>
-        <tbody id="projectLevelTable"><tr><td colspan="9" class="text-center text-muted">Waiting for project-level results...</td></tr></tbody>
-      </table></div>
-      <p class="text-muted small mb-0">Metrics for projects with fewer than 10 test builds are unstable. This subgroup analysis is not the same as project-grouped unseen-project evaluation.</p>
-    </div>
-  </section>
-
-
-
-  <section class="card shadow-sm mb-4" aria-labelledby="rocPrTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div>
-          <h2 id="rocPrTitle" class="h5 mb-1">ROC and Precision–Recall Curve Analysis</h2>
-          <p class="text-muted small mb-0">Threshold-independent evaluation on the random stratified 70:15:15 held-out test partition. Failure is the positive class.</p>
-        </div>
-        <span class="badge text-bg-secondary" id="rocPrBadge">Loading curve metrics...</span>
-      </div>
-      <div id="rocPrError" class="alert alert-warning d-none mt-3"></div>
-      <div class="row g-2 mt-2">
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">ROC-AUC</div><strong id="rocAucMetric">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Average Precision</div><strong id="averagePrecisionMetric">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Failure prevalence</div><strong id="failurePrevalenceMetric">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Held-out test builds</div><strong id="rocPrTestRecords">—</strong></div></div>
-      </div>
-      <h3 class="h6 mt-4">Receiver Operating Characteristic (ROC) curve</h3>
-      <p class="text-muted small">Shows the trade-off between failure recall (true positive rate) and false positive rate across probability thresholds.</p>
-      <img id="rocCurveImage" class="img-fluid border rounded bg-white" alt="ROC curve for failure prediction" style="width:100%; max-height:520px; object-fit:contain;">
-      <h3 class="h6 mt-4">Precision–Recall curve</h3>
-      <p class="text-muted small">Shows failure precision versus failure recall across thresholds. The dashed reference line represents failure prevalence in the held-out test set.</p>
-      <img id="prCurveImage" class="img-fluid border rounded bg-white" alt="Precision recall curve for failure prediction" style="width:100%; max-height:520px; object-fit:contain;">
-      <p class="text-muted small mt-3 mb-0">ROC-AUC measures ranking discrimination. Average Precision summarizes the precision–recall curve. Neither selects an operating threshold by itself.</p>
-    </div>
-  </section>
-
-
-
-  <section class="card shadow-sm mb-4" aria-labelledby="decisionThresholdTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div>
-          <h2 id="decisionThresholdTitle" class="h5 mb-1">Decision Threshold Analysis</h2>
-          <p class="text-muted small mb-0">Threshold selected on validation data by maximum Failure F1; the held-out test set is used only for final evaluation.</p>
-        </div>
-        <span class="badge text-bg-secondary" id="thresholdBadge">Loading threshold analysis...</span>
-      </div>
-      <div id="thresholdError" class="alert alert-warning d-none mt-3"></div>
-      <div class="row g-2 mt-2">
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Selected threshold</div><strong id="selectedThreshold">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Validation Failure F1</div><strong id="validationThresholdF1">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test Failure F1 (selected)</div><strong id="testThresholdF1">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test Failure recall (selected)</div><strong id="testThresholdRecall">—</strong></div></div>
-      </div>
-      <h3 class="h6 mt-4">Validation threshold comparison</h3>
-      <p class="text-muted small">Candidate thresholds are compared using validation records only. The dashed line marks the selected threshold.</p>
-      <img id="decisionThresholdPlot" class="img-fluid border rounded bg-white" alt="Validation decision threshold metrics plot" style="width:100%;max-height:520px;object-fit:contain;">
-      <h3 class="h6 mt-4">Held-out test comparison</h3>
-      <div class="table-responsive">
-        <table class="table table-bordered table-sm align-middle">
-          <thead class="table-light"><tr><th>Threshold</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th><th>False positives</th><th>False negatives</th></tr></thead>
-          <tbody id="thresholdTestTable"><tr><td colspan="7" class="text-center text-muted">Waiting for threshold results...</td></tr></tbody>
-        </table>
-      </div>
-      <p class="text-muted small mb-0">Threshold selection uses validation Failure F1, not test performance. A lower threshold may detect more failures but can increase false alarms. The best operational threshold depends on the relative cost of missed failures and false alarms.</p>
-    </div>
-  </section>
-
-  <section class="card shadow-sm mb-4" aria-labelledby="bootstrapCiTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div>
-          <h2 id="bootstrapCiTitle" class="h5 mb-1">Bootstrap Confidence Interval Analysis</h2>
-          <p class="text-muted small mb-0">95% percentile confidence intervals estimated by resampling paired records from the random held-out test partition.</p>
-        </div>
-        <span class="badge text-bg-secondary" id="bootstrapCiBadge">Loading confidence intervals...</span>
-      </div>
-      <div id="bootstrapCiError" class="alert alert-warning d-none mt-3"></div>
-      <div class="table-responsive mt-3">
-        <table class="table table-bordered table-sm align-middle">
-          <thead class="table-light">
-            <tr><th>Metric</th><th>Point estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>Bootstrap SD</th></tr>
-          </thead>
-          <tbody id="bootstrapCiTable">
-            <tr><td colspan="5" class="text-center text-muted">Waiting for bootstrap results...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="small text-muted" id="bootstrapCiMethod"></div>
-      <p class="text-muted small mt-2 mb-0">Intervals quantify sampling uncertainty on this held-out test set. They do not include uncertainty from retraining, model selection or dataset shift.</p>
-    </div>
-  </section>
-
-  <section class="card shadow-sm mb-4" aria-labelledby="errorAnalysisTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div><h2 id="errorAnalysisTitle" class="h5 mb-1">Held-out Test Error Analysis</h2>
-        <p class="text-muted small mb-0">Actual errors made by the Random Forest on the random 70:15:15 held-out test partition.</p></div>
-        <span class="badge text-bg-secondary" id="errorAnalysisBadge">Loading error results...</span>
-      </div>
-      <div id="errorAnalysisError" class="alert alert-warning d-none mt-3"></div>
-      <div class="row g-2 mt-2">
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">False positives</div><strong id="eaFalsePositive">—</strong><div class="small text-muted">Success predicted Failure</div></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">False negatives</div><strong id="eaFalseNegative">—</strong><div class="small text-muted">Failure predicted Success</div></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Correct failures</div><strong id="eaCorrectFailure">—</strong></div></div>
-        <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Correct successes</div><strong id="eaCorrectSuccess">—</strong></div></div>
-      </div>
-      <h3 class="h6 mt-4">Misclassified test-build examples</h3>
-      <p class="text-muted small">Examples are real held-out test records. Build and project identifiers are shown for audit only; they are not model inputs.</p>
-      <div class="table-responsive"><table class="table table-bordered table-sm align-middle">
-        <thead class="table-light"><tr><th>Error type</th><th>Actual</th><th>Predicted</th><th>Failure probability</th><th>Project</th><th>Build ID</th></tr></thead>
-        <tbody id="errorAnalysisTable"><tr><td colspan="6" class="text-center text-muted">Waiting for error analysis...</td></tr></tbody>
-      </table></div>
-      <p class="text-muted small mb-0">False positives and false negatives have different operational costs. Feature averages by error group are descriptive, not causal.</p>
-    </div>
-  </section>
-
-  <section class="card shadow-sm mb-4" aria-labelledby="globalShapTitle">
-    <div class="card-body p-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div>
-          <h2 id="globalShapTitle" class="h5 mb-1">Global SHAP Analysis</h2>
-          <p class="text-muted small mb-0">Overall feature contributions to the Failure prediction across a sample of held-out test builds.</p>
-        </div>
-        <span class="badge text-bg-secondary" id="globalShapBadge">Loading SHAP results...</span>
-      </div>
-      <div id="globalShapError" class="alert alert-warning d-none mt-3 mb-0"></div>
-      <div class="mt-3" style="height:420px; position:relative;">
-        <canvas id="globalShapChart" aria-label="Global SHAP feature importance chart"></canvas>
-      </div>
-      <p class="text-muted small mt-2">Mean absolute SHAP measures average contribution magnitude, not causation. Direction percentages count builds with positive or negative SHAP contributions; net direction summarizes the average signed contribution.</p>
-      <h3 class="h6 mt-4">SHAP summary plot</h3>
-      <p class="text-muted small">Each point represents a build-feature contribution. Positive SHAP values move the output toward Failure; negative values move it away. The table reports how often each feature contributes in each direction across the explained builds.</p>
-      <img id="globalShapSummaryImage" class="img-fluid border rounded bg-white" alt="Global SHAP summary plot" style="width:100%; display:none;">
-      <h3 class="h6 mt-4">Global feature importance and contribution direction</h3>
-      <div class="table-responsive">
-        <table class="table table-bordered table-sm align-middle">
-          <thead class="table-light"><tr><th>Rank</th><th>Original feature</th><th>Mean |SHAP|</th><th>Towards Failure</th><th>Away from Failure</th><th>Net direction</th></tr></thead>
-          <tbody id="globalShapTable"><tr><td colspan="6" class="text-center text-muted">Waiting for global SHAP results...</td></tr></tbody>
-        </table>
-      </div>
-      <p class="text-muted small mb-0">SHAP was calculated using the existing Random Forest and a deterministic sample from its held-out random test partition. The model was not retrained for this analysis.</p>
-    </div>
-  </section>
-
-  <div class="card shadow-sm mb-4">
-    <div class="card-body p-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h5 mb-0">Build input features</h2>
-        <span class="badge text-bg-primary">19 pre-build features</span>
-      </div>
-      <form id="predictionForm">
-        <div class="row g-3">
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="git_diff_src_churn">Source code churn</label><input class="form-control" type="number" min="0" step="any" id="git_diff_src_churn" value="120" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_added">Files added</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_files_added" value="3" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_deleted">Files deleted</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_files_deleted" value="2" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_files_modified">Files modified</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_files_modified" value="5" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_src_files">Source files changed</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_src_files" value="8" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_doc_files">Documentation files changed</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_doc_files" value="1" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_other_files">Other files changed</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_other_files" value="1" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_sloc">Source lines of code (SLOC)</label><input class="form-control" type="number" min="0" step="any" id="gh_sloc" value="500" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_num_commits_on_files_touched">Commits on files touched</label><input class="form-control" type="number" min="0" step="any" id="gh_num_commits_on_files_touched" value="4" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="code_churn_rate">Code churn rate</label><input class="form-control" type="number" min="0" step="any" id="code_churn_rate" value="0.25" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="files_changed_total">Total files changed</label><input class="form-control" type="number" min="0" step="any" id="files_changed_total" value="10" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="git_prev_commit_resolution_status">Previous commit resolution status</label>
-            <select class="form-select" id="git_prev_commit_resolution_status" required>
-              <option value="build_found" selected>Build found</option>
-              <option value="merge_found">Merge found</option>
-              <option value="no_previous_build">No previous build</option>
-            </select>
-          </div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_tests_added">Test files/lines added</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_tests_added" value="2" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_diff_tests_deleted">Test files/lines deleted</label><input class="form-control" type="number" min="0" step="any" id="gh_diff_tests_deleted" value="0" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_test_lines_per_kloc">Test lines per KLOC</label><input class="form-control" type="number" min="0" step="any" id="gh_test_lines_per_kloc" value="15" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_test_cases_per_kloc">Test cases per KLOC</label><input class="form-control" type="number" min="0" step="any" id="gh_test_cases_per_kloc" value="10" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_asserts_cases_per_kloc">Assertions per KLOC</label><input class="form-control" type="number" min="0" step="any" id="gh_asserts_cases_per_kloc" value="8" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_team_size">Team size</label><input class="form-control" type="number" min="0" step="any" id="gh_team_size" value="5" required></div>
-          <div class="col-md-6 col-lg-4"><label class="form-label" for="gh_by_core_team_member">Core team member indicator/value</label><input class="form-control" type="number" min="0" step="any" id="gh_by_core_team_member" value="1" required></div>
-        </div>
-        <div class="d-flex gap-2 mt-4">
-          <button id="submitBtn" class="btn btn-primary px-4" type="submit">Predict build</button>
-          <button class="btn btn-outline-secondary" type="reset">Reset</button>
-        </div>
-        <p class="required-note mt-3 mb-0">All fields are sent to the backend using the exact 19-feature model schema.</p>
-      </form>
-    </div>
-  </div>
-
-  <div id="errorBox" class="alert alert-danger d-none" role="alert"></div>
-  <section id="result" class="d-none">
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h2 class="h5 mb-3">Prediction result</h2>
-        <div id="predictionBadge" class="h3 mb-4"></div>
-        <div class="row g-4">
-          <div class="col-md-6">
-            <div class="d-flex justify-content-between"><span>Failure probability</span><strong id="failureProbability"></strong></div>
-            <div class="progress mt-2" style="height:12px"><div id="failureBar" class="progress-bar bg-danger" role="progressbar"></div></div>
-          </div>
-          <div class="col-md-6">
-            <div class="d-flex justify-content-between"><span>Success probability</span><strong id="successProbability"></strong></div>
-            <div class="progress mt-2" style="height:12px"><div id="successBar" class="progress-bar bg-success" role="progressbar"></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h2 class="h5 mb-1">Individual Build Prediction Analysis</h2>
-        <p class="text-muted small mb-3">Probabilities for the build entered above. This chart updates after each successful prediction.</p>
-        <div style="height:280px; position:relative;">
-          <canvas id="individualPredictionChart" role="img" aria-label="Bar chart showing this build's predicted success and failure probabilities"></canvas>
-        </div>
-      </div>
-    </div>
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h2 class="h5 mb-3">Top SHAP factors</h2>
-        <p class="text-muted small">Positive SHAP values support the predicted class; negative values oppose it, according to the backend explanation.</p>
-        <div id="topFactors"></div>
-      </div>
-    </div>
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h2 class="h5 mb-3">Recommendations</h2>
-        <ul id="recommendations" class="mb-0"></ul>
-      </div>
-    </div>
-  </section>
-  <footer class="text-center text-muted small py-3">Leakage-aware prediction uses pre-build repository and code-change information only.</footer>
+</section>
+<!-- End Confusion Matrix Comparison -->
+<section aria-labelledby="projectGroupedTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+<div>
+<h2 class="h5 mb-1" id="projectGroupedTitle">Project-Grouped Evaluation (Unseen Projects)</h2>
+<p class="text-muted small mb-0">Entire repositories are kept separate across training, validation and testing. The test projects are unseen during model training.</p>
 </div>
-
+<span class="badge text-bg-secondary" id="projectGroupedBadge">Loading project-grouped results...</span>
+</div>
+<div class="table-responsive">
+<table class="table table-bordered table-sm align-middle text-center">
+<thead class="table-light"><tr><th>Partition</th><th>Build records</th><th>Projects</th><th>Success</th><th>Failure</th></tr></thead>
+<tbody>
+<tr><th>Training</th><td id="pgTrainRecords">—</td><td id="pgTrainProjects">—</td><td id="pgTrainSuccess">—</td><td id="pgTrainFailure">—</td></tr>
+<tr><th>Validation</th><td id="pgValRecords">—</td><td id="pgValProjects">—</td><td id="pgValSuccess">—</td><td id="pgValFailure">—</td></tr>
+<tr><th>Held-out test</th><td id="pgTestRecords">—</td><td id="pgTestProjects">—</td><td id="pgTestSuccess">—</td><td id="pgTestFailure">—</td></tr>
+</tbody>
+</table>
+</div>
+<h3 class="h6 mt-3">Held-out unseen-project test performance</h3>
+<div class="row g-2 small">
+<div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Accuracy</div><strong id="pgAccuracy">—</strong></div></div>
+<div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure precision</div><strong id="pgPrecision">—</strong></div></div>
+<div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure recall</div><strong id="pgRecall">—</strong></div></div>
+<div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure F1</div><strong id="pgF1">—</strong></div></div>
+<div class="col-6 col-md"><div class="border rounded p-2"><div class="text-muted">Failure ROC-AUC</div><strong id="pgAuc">—</strong></div></div>
+</div>
+<h3 class="h6 mt-3">Project-grouped confusion matrix</h3>
+<div class="table-responsive" style="max-width:520px;">
+<table class="table table-bordered text-center align-middle">
+<thead class="table-light"><tr><th>Actual / Predicted</th><th>Success</th><th>Failure</th></tr></thead>
+<tbody>
+<tr><th>Success</th><td class="table-success fw-bold" id="pgCmSS">—</td><td id="pgCmSF">—</td></tr>
+<tr><th>Failure</th><td id="pgCmFS">—</td><td class="table-warning fw-bold" id="pgCmFF">—</td></tr>
+</tbody>
+</table>
+</div>
+<p class="text-muted small mb-0">This is a separate experiment from random and chronological evaluation. Project names are used only for splitting, never as model input features.</p>
+</div>
+</section>
+<section aria-labelledby="baselineTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<h2 class="h5 mb-1" id="baselineTitle">Baseline Model Comparison</h2>
+<p class="text-muted small">Simple baselines evaluated on the same held-out partitions. The previous-build baseline is available only for timestamp-matched chronological testing.</p>
+<div class="table-responsive">
+<table class="table table-bordered table-sm align-middle text-center">
+<thead class="table-light">
+<tr><th>Experiment / baseline</th><th>Records scored</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th></tr>
+</thead>
+<tbody>
+<tr><th>Random Forest – random</th><td id="rfRandomN">—</td><td id="rfRandomAcc">—</td><td id="rfRandomPrec">—</td><td id="rfRandomRec">—</td><td id="rfRandomF1">—</td></tr>
+<tr><th>Majority – random</th><td id="baseRandomN">—</td><td id="baseRandomAcc">—</td><td id="baseRandomPrec">—</td><td id="baseRandomRec">—</td><td id="baseRandomF1">—</td></tr>
+<tr><th>Random Forest – chronological</th><td id="rfChronoN">—</td><td id="rfChronoAcc">—</td><td id="rfChronoPrec">—</td><td id="rfChronoRec">—</td><td id="rfChronoF1">—</td></tr>
+<tr><th>Majority – chronological</th><td id="baseChronoN">—</td><td id="baseChronoAcc">—</td><td id="baseChronoPrec">—</td><td id="baseChronoRec">—</td><td id="baseChronoF1">—</td></tr>
+<tr><th>Previous build outcome – chronological</th><td id="basePrevN">—</td><td id="basePrevAcc">—</td><td id="basePrevPrec">—</td><td id="basePrevRec">—</td><td id="basePrevF1">—</td></tr>
+<tr><th>Random Forest – project-grouped</th><td id="rfGroupN">—</td><td id="rfGroupAcc">—</td><td id="rfGroupPrec">—</td><td id="rfGroupRec">—</td><td id="rfGroupF1">—</td></tr>
+<tr><th>Majority – project-grouped</th><td id="baseGroupN">—</td><td id="baseGroupAcc">—</td><td id="baseGroupPrec">—</td><td id="baseGroupRec">—</td><td id="baseGroupF1">—</td></tr>
+</tbody>
+</table>
+</div>
+<p class="text-muted small mb-0">Previous-build baseline predicts the current build from the immediately preceding build outcome in the same project. Six of 706 chronological test records were excluded because no strictly earlier, unambiguous prior build was available.</p>
+</div>
+</section>
+</div><section aria-labelledby="projectLevelTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+<div><h2 class="h5 mb-1" id="projectLevelTitle">Project-Level Performance Analysis</h2>
+<p class="text-muted small mb-0">Random Forest metrics grouped by repository on the random held-out test partition. Project names are used only for reporting, not as model inputs.</p></div>
+<span class="badge text-bg-secondary" id="projectLevelBadge">Loading project metrics...</span>
+</div>
+<div class="alert alert-warning d-none mt-3" id="projectLevelError"></div>
+<div class="row g-2 mt-2">
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test builds</div><strong id="plTestRecords">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Projects represented</div><strong id="plProjectCount">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Small samples (&lt;10)</div><strong id="plSmallCount">—</strong></div></div>
+</div>
+<div class="table-responsive mt-3"><table class="table table-bordered table-sm align-middle">
+<thead class="table-light"><tr><th>Project</th><th>Builds</th><th>Success</th><th>Failure</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th><th>Sample note</th></tr></thead>
+<tbody id="projectLevelTable"><tr><td class="text-center text-muted" colspan="9">Waiting for project-level results...</td></tr></tbody>
+</table></div>
+<p class="text-muted small mb-0">Metrics for projects with fewer than 10 test builds are unstable. This subgroup analysis is not the same as project-grouped unseen-project evaluation.</p>
+</div>
+</section><section aria-labelledby="rocPrTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+<div>
+<h2 class="h5 mb-1" id="rocPrTitle">ROC and Precision–Recall Curve Analysis</h2>
+<p class="text-muted small mb-0">Threshold-independent evaluation on the random stratified 70:15:15 held-out test partition. Failure is the positive class.</p>
+</div>
+<span class="badge text-bg-secondary" id="rocPrBadge">Loading curve metrics...</span>
+</div>
+<div class="alert alert-warning d-none mt-3" id="rocPrError"></div>
+<div class="row g-2 mt-2">
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">ROC-AUC</div><strong id="rocAucMetric">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Average Precision</div><strong id="averagePrecisionMetric">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Failure prevalence</div><strong id="failurePrevalenceMetric">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Held-out test builds</div><strong id="rocPrTestRecords">—</strong></div></div>
+</div>
+<h3 class="h6 mt-4">Receiver Operating Characteristic (ROC) curve</h3>
+<p class="text-muted small">Shows the trade-off between failure recall (true positive rate) and false positive rate across probability thresholds.</p>
+<img alt="ROC curve for failure prediction" class="img-fluid border rounded bg-white" id="rocCurveImage" style="width:100%; max-height:520px; object-fit:contain;"/>
+<h3 class="h6 mt-4">Precision–Recall curve</h3>
+<p class="text-muted small">Shows failure precision versus failure recall across thresholds. The dashed reference line represents failure prevalence in the held-out test set.</p>
+<img alt="Precision recall curve for failure prediction" class="img-fluid border rounded bg-white" id="prCurveImage" style="width:100%; max-height:520px; object-fit:contain;"/>
+<p class="text-muted small mt-3 mb-0">ROC-AUC measures ranking discrimination. Average Precision summarizes the precision–recall curve. Neither selects an operating threshold by itself.</p>
+</div>
+</section><section aria-labelledby="decisionThresholdTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+<div>
+<h2 class="h5 mb-1" id="decisionThresholdTitle">Decision Threshold Analysis</h2>
+<p class="text-muted small mb-0">Threshold selected on validation data by maximum Failure F1; the held-out test set is used only for final evaluation.</p>
+</div>
+<span class="badge text-bg-secondary" id="thresholdBadge">Loading threshold analysis...</span>
+</div>
+<div class="alert alert-warning d-none mt-3" id="thresholdError"></div>
+<div class="row g-2 mt-2">
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Selected threshold</div><strong id="selectedThreshold">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Validation Failure F1</div><strong id="validationThresholdF1">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test Failure F1 (selected)</div><strong id="testThresholdF1">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Test Failure recall (selected)</div><strong id="testThresholdRecall">—</strong></div></div>
+</div>
+<h3 class="h6 mt-4">Validation threshold comparison</h3>
+<p class="text-muted small">Candidate thresholds are compared using validation records only. The dashed line marks the selected threshold.</p>
+<img alt="Validation decision threshold metrics plot" class="img-fluid border rounded bg-white" id="decisionThresholdPlot" style="width:100%;max-height:520px;object-fit:contain;"/>
+<h3 class="h6 mt-4">Held-out test comparison</h3>
+<div class="table-responsive">
+<table class="table table-bordered table-sm align-middle">
+<thead class="table-light"><tr><th>Threshold</th><th>Accuracy</th><th>Failure precision</th><th>Failure recall</th><th>Failure F1</th><th>False positives</th><th>False negatives</th></tr></thead>
+<tbody id="thresholdTestTable"><tr><td class="text-center text-muted" colspan="7">Waiting for threshold results...</td></tr></tbody>
+</table>
+</div>
+<p class="text-muted small mb-0">Threshold selection uses validation Failure F1, not test performance. A lower threshold may detect more failures but can increase false alarms. The best operational threshold depends on the relative cost of missed failures and false alarms.</p>
+</div>
+</section><section aria-labelledby="bootstrapCiTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+<div>
+<h2 class="h5 mb-1" id="bootstrapCiTitle">Bootstrap Confidence Interval Analysis</h2>
+<p class="text-muted small mb-0">95% percentile confidence intervals estimated by resampling paired records from the random held-out test partition.</p>
+</div>
+<span class="badge text-bg-secondary" id="bootstrapCiBadge">Loading confidence intervals...</span>
+</div>
+<div class="alert alert-warning d-none mt-3" id="bootstrapCiError"></div>
+<div class="table-responsive mt-3">
+<table class="table table-bordered table-sm align-middle">
+<thead class="table-light">
+<tr><th>Metric</th><th>Point estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>Bootstrap SD</th></tr>
+</thead>
+<tbody id="bootstrapCiTable">
+<tr><td class="text-center text-muted" colspan="5">Waiting for bootstrap results...</td></tr>
+</tbody>
+</table>
+</div>
+<div class="small text-muted" id="bootstrapCiMethod"></div>
+<p class="text-muted small mt-2 mb-0">Intervals quantify sampling uncertainty on this held-out test set. They do not include uncertainty from retraining, model selection or dataset shift.</p>
+</div>
+</section><section aria-labelledby="errorAnalysisTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+<div><h2 class="h5 mb-1" id="errorAnalysisTitle">Held-out Test Error Analysis</h2>
+<p class="text-muted small mb-0">Actual errors made by the Random Forest on the random 70:15:15 held-out test partition.</p></div>
+<span class="badge text-bg-secondary" id="errorAnalysisBadge">Loading error results...</span>
+</div>
+<div class="alert alert-warning d-none mt-3" id="errorAnalysisError"></div>
+<div class="row g-2 mt-2">
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">False positives</div><strong id="eaFalsePositive">—</strong><div class="small text-muted">Success predicted Failure</div></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">False negatives</div><strong id="eaFalseNegative">—</strong><div class="small text-muted">Failure predicted Success</div></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Correct failures</div><strong id="eaCorrectFailure">—</strong></div></div>
+<div class="col-6 col-md-3"><div class="border rounded p-2"><div class="text-muted small">Correct successes</div><strong id="eaCorrectSuccess">—</strong></div></div>
+</div>
+<h3 class="h6 mt-4">Misclassified test-build examples</h3>
+<p class="text-muted small">Examples are real held-out test records. Build and project identifiers are shown for audit only; they are not model inputs.</p>
+<div class="table-responsive"><table class="table table-bordered table-sm align-middle">
+<thead class="table-light"><tr><th>Error type</th><th>Actual</th><th>Predicted</th><th>Failure probability</th><th>Project</th><th>Build ID</th></tr></thead>
+<tbody id="errorAnalysisTable"><tr><td class="text-center text-muted" colspan="6">Waiting for error analysis...</td></tr></tbody>
+</table></div>
+<p class="text-muted small mb-0">False positives and false negatives have different operational costs. Feature averages by error group are descriptive, not causal.</p>
+</div>
+</section></section>
+<section class="tab-pane" id="tab-explainability" role="tabpanel"><div class="tab-heading"><div><div class="section-kicker">Model interpretation</div><h2>Explainability</h2><p>Understand which pre-build features influence the Random Forest model.</p></div></div><section aria-labelledby="globalShapTitle" class="card shadow-sm mb-4">
+<div class="card-body p-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+<div>
+<h2 class="h5 mb-1" id="globalShapTitle">Global SHAP Analysis</h2>
+<p class="text-muted small mb-0">Overall feature contributions to the Failure prediction across a sample of held-out test builds.</p>
+</div>
+<span class="badge text-bg-secondary" id="globalShapBadge">Loading SHAP results...</span>
+</div>
+<div class="alert alert-warning d-none mt-3 mb-0" id="globalShapError"></div>
+<div class="mt-3" style="height:420px; position:relative;">
+<canvas aria-label="Global SHAP feature importance chart" id="globalShapChart"></canvas>
+</div>
+<p class="text-muted small mt-2">Mean absolute SHAP measures average contribution magnitude, not causation. Direction percentages count builds with positive or negative SHAP contributions; net direction summarizes the average signed contribution.</p>
+<h3 class="h6 mt-4">SHAP summary plot</h3>
+<p class="text-muted small">Each point represents a build-feature contribution. Positive SHAP values move the output toward Failure; negative values move it away. The table reports how often each feature contributes in each direction across the explained builds.</p>
+<img alt="Global SHAP summary plot" class="img-fluid border rounded bg-white" id="globalShapSummaryImage" style="width:100%; display:none;"/>
+<h3 class="h6 mt-4">Global feature importance and contribution direction</h3>
+<div class="table-responsive">
+<table class="table table-bordered table-sm align-middle">
+<thead class="table-light"><tr><th>Rank</th><th>Original feature</th><th>Mean |SHAP|</th><th>Towards Failure</th><th>Away from Failure</th><th>Net direction</th></tr></thead>
+<tbody id="globalShapTable"><tr><td class="text-center text-muted" colspan="6">Waiting for global SHAP results...</td></tr></tbody>
+</table>
+</div>
+<p class="text-muted small mb-0">SHAP was calculated using the existing Random Forest and a deterministic sample from its held-out random test partition. The model was not retrained for this analysis.</p>
+</div>
+</section></section>
+</main><footer class="text-center text-muted small py-4">Leakage-aware prediction uses pre-build repository and code-change information only.</footer></div>
 <script>
+// Dashboard tab navigation. Existing form IDs, API routes and chart data are preserved.
+document.querySelectorAll('[data-tab]').forEach((button) => {
+  button.addEventListener('click', () => activateDashboardTab(button.dataset.tab));
+});
+document.querySelectorAll('[data-go]').forEach((button) => {
+  button.addEventListener('click', () => activateDashboardTab(button.dataset.go));
+});
+function activateDashboardTab(name) {
+  document.querySelectorAll('.dashboard-nav [data-tab]').forEach((button) => {
+    const active = button.dataset.tab === name;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tab-pane').forEach((pane) => {
+    pane.classList.toggle('active', pane.id === 'tab-' + name);
+  });
+  requestAnimationFrame(() => {
+    if (name === 'evaluation' && evaluationChartInstance) evaluationChartInstance.resize();
+    if (name === 'explainability' && globalShapChartInstance) globalShapChartInstance.resize();
+    if (name === 'prediction' && individualPredictionChartInstance) individualPredictionChartInstance.resize();
+  });
+}
+
+
 const evaluationCanvas = document.getElementById("evaluationChart");
 let evaluationChartInstance;
 let individualPredictionChartInstance = null;
@@ -566,6 +614,8 @@ async function loadEvaluationMetrics() {
 loadEvaluationMetrics();
 
 
+let globalShapChartInstance = null;
+
 async function loadGlobalShap() {
   const errorBox = document.getElementById("globalShapError");
   try {
@@ -577,7 +627,7 @@ async function loadGlobalShap() {
     const data = await response.json();
     const features = data.features || [];
     const chartFeatures = features.slice(0, 19).slice().reverse();
-    new Chart(document.getElementById("globalShapChart"), {
+    globalShapChartInstance = new Chart(document.getElementById("globalShapChart"), {
       type: "bar",
       data: {
         labels: chartFeatures.map(x => x.feature),
@@ -905,6 +955,7 @@ document.getElementById("predictionForm").addEventListener("submit", async (even
     }
     document.getElementById("evaluationResults").classList.remove("d-none");
     if (evaluationChartInstance) evaluationChartInstance.resize();
+    activateDashboardTab("prediction");
     resultSection.classList.remove("d-none");
     resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
