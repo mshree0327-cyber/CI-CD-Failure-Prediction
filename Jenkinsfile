@@ -1,6 +1,9 @@
 
 node {
-
+    stage('Checkout GitHub Repository') {
+        checkout scm
+        echo 'GitHub repository checked out successfully!'
+    }
     stage('Test Jenkins') {
         echo 'Jenkins is working successfully!'
     }
