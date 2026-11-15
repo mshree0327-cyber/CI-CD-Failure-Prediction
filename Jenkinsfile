@@ -1,9 +1,64 @@
 
+import groovy.json.JsonOutput
+
 node {
     stage('Checkout GitHub Repository') {
         checkout scm
         echo 'GitHub repository checked out successfully!'
     }
+
+    // NEW: Record actual Jenkins and Git metadata
+    stage('Record Build Metadata') {
+        def metadata = [
+            jenkins_build_number: env.BUILD_NUMBER,
+            jenkins_build_id: env.BUILD_ID,
+            git_commit: sh(
+                script: 'git rev-parse HEAD',
+                returnStdout: true
+            ).trim(),
+            git_branch: env.GIT_BRANCH ?: 'unknown',
+            git_url: sh(
+                script: 'git config --get remote.origin.url',
+                returnStdout: true
+            ).trim(),
+            commit_author: sh(
+                script: 'git log -1 --format=%an',
+                returnStdout: true
+            ).trim(),
+            commit_author_email: sh(
+                script: 'git log -1 --format=%ae',
+                returnStdout: true
+            ).trim(),
+            commit_timestamp: sh(
+                script: 'git log -1 --format=%aI',
+                returnStdout: true
+            ).trim(),
+            commit_message: sh(
+                script: 'git log -1 --format=%s',
+                returnStdout: true
+            ).trim(),
+            metadata_recorded_at_utc: new Date().format(
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                TimeZone.getTimeZone('UTC')
+            )
+        ]
+
+        writeFile(
+            file: 'build_metadata.json',
+            text: JsonOutput.prettyPrint(
+                JsonOutput.toJson(metadata)
+            )
+        )
+
+        archiveArtifacts(
+            artifacts: 'build_metadata.json',
+            fingerprint: true
+        )
+
+        echo 'Build metadata recorded successfully!'
+        echo "Git commit: ${metadata.git_commit}"
+    }
+
     stage('Test Jenkins') {
         echo 'Jenkins is working successfully!'
     }
