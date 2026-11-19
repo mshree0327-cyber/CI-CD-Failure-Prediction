@@ -1,6 +1,16 @@
 
 import groovy.json.JsonOutput
 
+properties([
+    parameters([
+        choice(
+            name: 'DEMO_MODE',
+            choices: ['NORMAL', 'FORCE_FAILURE'],
+            description: 'NORMAL: all tests pass. FORCE_FAILURE: trigger one intentional test failure.'
+        )
+    ])
+])
+
 node {
     stage('Checkout GitHub Repository') {
         checkout scm
@@ -58,7 +68,10 @@ node {
     stage('Check FastAPI') {
         sh '''
             echo "Checking FastAPI health..."
-            curl -sS -f http://host.docker.internal:8000/health
+
+            curl -sS -f \
+                http://host.docker.internal:8000/health
+
             echo ""
             echo "FastAPI is available."
         '''
@@ -169,15 +182,26 @@ PY
 
     stage('Run Pytest') {
         script {
-            int testStatus = sh(
-                script: '''
-                    echo "Running application tests..."
+            def demoMode = params.DEMO_MODE ?: 'NORMAL'
 
-                    /var/jenkins_home/pytest-venv/bin/python \
-                        -m pytest demo_app -v
-                ''',
-                returnStatus: true
-            )
+            def forceFailure =
+                demoMode == 'FORCE_FAILURE' ? '1' : '0'
+
+            echo "Selected demonstration mode: ${demoMode}"
+
+            int testStatus = 0
+
+            withEnv(["DEMO_FORCE_FAILURE=${forceFailure}"]) {
+                testStatus = sh(
+                    script: '''
+                        echo "Running application tests..."
+
+                        /var/jenkins_home/pytest-venv/bin/python \
+                            -m pytest demo_app -v
+                    ''',
+                    returnStatus: true
+                )
+            }
 
             writeFile(
                 file: 'pytest_exit_code.txt',
@@ -203,8 +227,11 @@ PY
                 'SUCCESS' : 'FAILURE'
 
             def result = [
-                application_build_status: buildStatus == 0 ? 'SUCCESS' : 'FAILURE',
-                pytest_status: testStatus == 0 ? 'SUCCESS' : 'FAILURE',
+                demo_mode: params.DEMO_MODE ?: 'NORMAL',
+                application_build_status:
+                    buildStatus == 0 ? 'SUCCESS' : 'FAILURE',
+                pytest_status:
+                    testStatus == 0 ? 'SUCCESS' : 'FAILURE',
                 application_build_exit_code: buildStatus,
                 pytest_exit_code: testStatus,
                 actual_outcome: actualOutcome,
