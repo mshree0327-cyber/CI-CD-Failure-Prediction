@@ -7,7 +7,6 @@ node {
         echo 'GitHub repository checked out successfully!'
     }
 
-    // NEW: Record actual Jenkins and Git metadata
     stage('Record Build Metadata') {
         def metadata = [
             jenkins_build_number: env.BUILD_NUMBER,
@@ -45,9 +44,7 @@ node {
 
         writeFile(
             file: 'build_metadata.json',
-            text: JsonOutput.prettyPrint(
-                JsonOutput.toJson(metadata)
-            )
+            text: JsonOutput.prettyPrint(JsonOutput.toJson(metadata))
         )
 
         archiveArtifacts(
@@ -55,76 +52,127 @@ node {
             fingerprint: true
         )
 
-        echo 'Build metadata recorded successfully!'
-        echo "Git commit: ${metadata.git_commit}"
-    }
-
-    stage('Test Jenkins') {
-        echo 'Jenkins is working successfully!'
+        echo "Metadata recorded for commit: ${metadata.git_commit}"
     }
 
     stage('Check FastAPI') {
         sh '''
-            echo "Checking FastAPI..."
+            echo "Checking FastAPI health..."
 
             curl -sS -f \
-            http://host.docker.internal:8000/health
+                http://host.docker.internal:8000/health
 
             echo ""
+            echo "FastAPI is available."
         '''
     }
 
-    stage('Generate Build Features') {
+    stage('Identify Git Commits') {
         sh '''
-            echo "Generating 19 pre-build features..."
+            echo "Identifying target and base commits..."
 
-            cat > build_features.json <<'EOF'
-{
-    "git_diff_src_churn": 0,
-    "gh_diff_files_added": 0,
-    "gh_diff_files_deleted": 0,
-    "gh_diff_files_modified": 2,
-    "gh_diff_src_files": 0,
-    "gh_diff_doc_files": 0,
-    "gh_diff_other_files": 0,
-    "gh_sloc": 1110,
-    "gh_num_commits_on_files_touched": 28,
-    "code_churn_rate": 0,
-    "files_changed_total": 2,
-    "git_prev_commit_resolution_status": "build_found",
-    "gh_diff_tests_added": 0,
-    "gh_diff_tests_deleted": 0,
-    "gh_test_lines_per_kloc": 2854.054054,
-    "gh_test_cases_per_kloc": 217.117117,
-    "gh_asserts_cases_per_kloc": 275.675676,
-    "gh_team_size": 5,
-    "gh_by_core_team_member": 0
-}
-EOF
+            TARGET=$(git rev-parse HEAD)
 
-            echo "Validating JSON feature count..."
+            if ! BASE=$(git rev-parse "${TARGET}^" 2>/dev/null); then
+                echo "ERROR: Parent commit not available."
+                echo "Check that Git history is not shallow."
+                exit 1
+            fi
 
-            FEATURE_COUNT=$(grep -c ':' build_features.json)
-            echo "Feature count: $FEATURE_COUNT"
-            test "$FEATURE_COUNT" -eq 19
+            git cat-file -e "${BASE}^{commit}"
+            git cat-file -e "${TARGET}^{commit}"
 
-            echo "Generated build features:"
+            echo "$BASE" > base_commit.txt
+            echo "$TARGET" > target_commit.txt
+
+            echo "BASE: $BASE"
+            echo "TARGET: $TARGET"
+        '''
+    }
+
+    stage('Generate Dynamic Features') {
+        sh '''
+            echo "Generating dynamic pre-build features..."
+
+            BASE=$(cat base_commit.txt)
+            TARGET=$(cat target_commit.txt)
+
+            python3 backend/live_feature_generator.py \
+                --base "$BASE" \
+                --target "$TARGET" \
+                --output build_features.json
+
+            echo "Feature extraction completed."
+
+            test -s build_features.json
+
+            echo "Generated feature envelope:"
             cat build_features.json
+        '''
+    }
+
+    stage('Validate 16 Model Features') {
+        sh '''
+            echo "Extracting and validating the 16 model features..."
+
+            python3 - <<'PY'
+import json
+
+with open("build_features.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+features = data.get("model_features")
+
+if not isinstance(features, dict):
+    raise SystemExit(
+        "ERROR: build_features.json does not contain a model_features object."
+    )
+
+if len(features) != 16:
+    raise SystemExit(
+        f"ERROR: Expected 16 features, received {len(features)}."
+    )
+
+with open("dynamic_prediction_input.json", "w", encoding="utf-8") as f:
+    json.dump(features, f, indent=4)
+
+print("Validated feature count:", len(features))
+print("Feature names:")
+for name in features:
+    print("-", name)
+PY
+
+            echo "Dynamic prediction input:"
+            cat dynamic_prediction_input.json
         '''
     }
 
     stage('Predict CI/CD Build') {
         sh '''
-            echo "Sending 19 features to ML API..."
+            echo "Sending 16 dynamic features to FastAPI..."
 
             curl -sS -f -X POST \
-            http://host.docker.internal:8000/api/predict \
-            -H "Content-Type: application/json" \
-            --data-binary @build_features.json
+                http://host.docker.internal:8000/api/predict-dynamic \
+                -H "Content-Type: application/json" \
+                --data-binary @dynamic_prediction_input.json \
+                -o prediction_result.json
+
+            test -s prediction_result.json
+
+            echo "Prediction result:"
+            cat prediction_result.json
 
             echo ""
-
-            echo "Prediction completed successfully."
+            echo "Dynamic prediction completed successfully."
         '''
+    }
+
+    stage('Archive Dynamic Prediction Results') {
+        archiveArtifacts(
+            artifacts: 'build_metadata.json,base_commit.txt,target_commit.txt,build_features.json,dynamic_prediction_input.json,prediction_result.json',
+            fingerprint: true
+        )
+
+        echo 'All dynamic prediction artifacts archived successfully.'
     }
 }

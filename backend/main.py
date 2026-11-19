@@ -22,6 +22,25 @@ MODEL_FEATURES = bundle["features"]
 RAW_FEATURES = bundle["raw_features"]
 CAT_FEATURE = bundle["categorical_feature"]
 NUMERIC_MEDIANS = bundle.get("numeric_medians", {})
+
+# Load the newer 16-feature model independently; keep the original model above.
+DYNAMIC_MODEL_FILE = BASE_DIR / "random_forest_dynamic_model.joblib"
+if not DYNAMIC_MODEL_FILE.exists():
+    raise RuntimeError(
+        "Dynamic model file missing: backend/random_forest_dynamic_model.joblib"
+    )
+
+dynamic_bundle = joblib.load(DYNAMIC_MODEL_FILE)
+dynamic_model = dynamic_bundle["model"]
+DYNAMIC_FEATURES = dynamic_bundle["features"]
+DYNAMIC_RAW_FEATURES = dynamic_bundle["raw_features"]
+DYNAMIC_NUMERIC_MEDIANS = dynamic_bundle.get("numeric_medians", {})
+DYNAMIC_CATEGORICAL_FEATURE = dynamic_bundle.get("categorical_feature")
+
+if len(DYNAMIC_FEATURES) != 16 or DYNAMIC_FEATURES != DYNAMIC_RAW_FEATURES:
+    raise RuntimeError("Dynamic model feature schema is not the expected 16 numeric features.")
+if DYNAMIC_CATEGORICAL_FEATURE is not None:
+    raise RuntimeError("Dynamic API expects the verified model with no categorical feature.")
 EVALUATION_FILE = BASE_DIR.parent / "data" / "evaluation_70_15_15.json"
 PROJECT_GROUPED_EVALUATION_FILE = BASE_DIR.parent / "data" / "project_grouped_evaluation.json"
 BASELINE_COMPARISON_FILE = BASE_DIR.parent / "data" / "baseline_comparison.json"
@@ -57,6 +76,26 @@ class BuildData(BaseModel):
     gh_team_size: float = Field(..., ge=0)
     gh_by_core_team_member: float = Field(..., ge=0)
 
+
+class DynamicBuildData(BaseModel):
+    """The 16 numeric pre-build features used by the dynamic model."""
+    git_diff_src_churn: float = Field(..., ge=0)
+    gh_diff_files_added: float = Field(..., ge=0)
+    gh_diff_files_deleted: float = Field(..., ge=0)
+    gh_diff_files_modified: float = Field(..., ge=0)
+    gh_diff_src_files: float = Field(..., ge=0)
+    gh_diff_doc_files: float = Field(..., ge=0)
+    gh_diff_other_files: float = Field(..., ge=0)
+    gh_sloc: float = Field(..., ge=0)
+    gh_num_commits_on_files_touched: float = Field(..., ge=0)
+    code_churn_rate: float = Field(..., ge=0)
+    files_changed_total: float = Field(..., ge=0)
+    gh_diff_tests_added: float = Field(..., ge=0)
+    gh_diff_tests_deleted: float = Field(..., ge=0)
+    gh_test_lines_per_kloc: float = Field(..., ge=0)
+    gh_test_cases_per_kloc: float = Field(..., ge=0)
+    gh_asserts_cases_per_kloc: float = Field(..., ge=0)
+
 def prepare_input(payload):
     raw = pd.DataFrame([payload])[RAW_FEATURES]
     raw[CAT_FEATURE] = raw[CAT_FEATURE].astype("string").fillna("__MISSING__")
@@ -66,18 +105,122 @@ def prepare_input(payload):
     # Exact training columns and order; unseen categories become all-zero.
     return encoded.reindex(columns=MODEL_FEATURES, fill_value=0)
 
+
+def prepare_dynamic_input(payload):
+    """Build a one-row frame in the exact order used to train the 16-feature model."""
+    raw = pd.DataFrame([payload]).reindex(columns=DYNAMIC_RAW_FEATURES)
+    for column in DYNAMIC_RAW_FEATURES:
+        median = DYNAMIC_NUMERIC_MEDIANS.get(column, 0.0)
+        raw[column] = pd.to_numeric(raw[column], errors="coerce").fillna(median)
+    return raw.reindex(columns=DYNAMIC_FEATURES)
+
+
+def get_shap_values_for_class(model_to_explain, frame, predicted_class):
+    """Return a one-dimensional SHAP vector across common SHAP output formats."""
+    explainer = shap.TreeExplainer(model_to_explain)
+    values = explainer.shap_values(frame)
+    class_index = list(model_to_explain.classes_).index(predicted_class)
+
+    if isinstance(values, list):
+        selected = values[class_index]
+    else:
+        selected = values
+
+    # SHAP Explanation objects and NumPy arrays both support conversion.
+    import numpy as np
+    selected = np.asarray(selected)
+    if selected.ndim == 3:
+        # Common multi-class layout: (samples, features, classes).
+        selected = selected[0, :, class_index]
+    elif selected.ndim == 2:
+        selected = selected[0]
+    elif selected.ndim != 1:
+        raise ValueError(f"Unsupported SHAP output shape: {selected.shape}")
+
+    return selected
+
 @app.get("/")
 def home():
     return {"message": "Leakage-aware CI/CD prediction API is running", "status": "success"}
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "model_loaded": True, "feature_count": len(RAW_FEATURES)}
+    return {
+        "status": "healthy",
+        "model_loaded": True,
+        "legacy_model_loaded": model is not None,
+        "legacy_feature_count": len(RAW_FEATURES),
+        "dynamic_model_loaded": dynamic_model is not None,
+        "dynamic_feature_count": len(DYNAMIC_RAW_FEATURES),
+    }
 
 @app.get("/api/features")
 def get_features():
     return {"features": RAW_FEATURES, "count": len(RAW_FEATURES),
             "policy": "audited pre-build features only"}
+
+
+@app.get("/api/features-dynamic")
+def get_dynamic_features():
+    return {
+        "features": DYNAMIC_RAW_FEATURES,
+        "count": len(DYNAMIC_RAW_FEATURES),
+        "model": "random_forest_dynamic_model.joblib",
+        "feature_policy": "16 numeric pre-build features",
+        "historical_definition_parity": "unverified",
+    }
+
+
+@app.post("/api/predict-dynamic")
+def predict_dynamic(build: DynamicBuildData):
+    """Predict with the 16-feature model using pre-build inputs only."""
+    try:
+        frame = prepare_dynamic_input(build.dict())
+        predicted = int(dynamic_model.predict(frame)[0])
+        classes = list(dynamic_model.classes_)
+        probabilities = dynamic_model.predict_proba(frame)[0]
+        failure_probability = float(probabilities[classes.index(0)])
+        success_probability = float(probabilities[classes.index(1)])
+        result = "SUCCESS" if predicted == 1 else "FAILURE"
+
+        top_factors = []
+        explanation_status = "available"
+        try:
+            shap_vector = get_shap_values_for_class(dynamic_model, frame, predicted)
+            factors = []
+            for feature, value, impact in zip(DYNAMIC_FEATURES, frame.iloc[0], shap_vector):
+                factors.append({
+                    "feature": feature,
+                    "value": float(value),
+                    "shap_value": round(float(impact), 6),
+                    "absolute_shap": round(abs(float(impact)), 6),
+                })
+            factors.sort(key=lambda item: item["absolute_shap"], reverse=True)
+            top_factors = factors[:10]
+        except Exception as shap_exc:
+            # Prediction remains usable if the installed SHAP version returns an
+            # unsupported format; report the explanation limitation explicitly.
+            explanation_status = f"unavailable: {type(shap_exc).__name__}: {shap_exc}"
+
+        try:
+            recommendations = generate_recommendations(result, top_factors) if top_factors else []
+        except Exception:
+            recommendations = []
+
+        return {
+            "prediction": result,
+            "failure_probability": round(failure_probability * 100, 2),
+            "success_probability": round(success_probability * 100, 2),
+            "model": "random_forest_dynamic_model.joblib",
+            "feature_count": len(DYNAMIC_FEATURES),
+            "explanation_status": explanation_status,
+            "top_factors": top_factors,
+            "recommendations": recommendations,
+            "historical_definition_parity": "unverified",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Dynamic prediction failed: {exc}")
+
 
 @app.post("/api/predict")
 def predict(build: BuildData):
